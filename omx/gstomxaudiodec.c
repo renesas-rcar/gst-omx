@@ -4,6 +4,7 @@
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
  * Copyright (C) 2014, Sebastian Dröge <sebastian@centricular.com>
+ * Copyright (C) 2015, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -1165,6 +1166,7 @@ gst_omx_audio_dec_handle_frame (GstAudioDecoder * decoder, GstBuffer * inbuf)
       goto release_error;
   }
 
+  gst_buffer_unmap (inbuf, &minfo);
   GST_DEBUG_OBJECT (self, "Passed frame to component");
   if (inbuf)
     gst_buffer_unref (inbuf);
@@ -1173,6 +1175,7 @@ gst_omx_audio_dec_handle_frame (GstAudioDecoder * decoder, GstBuffer * inbuf)
 
 full_buffer:
   {
+    gst_buffer_unmap (inbuf, &minfo);
     if (inbuf)
       gst_buffer_unref (inbuf);
 
@@ -1184,6 +1187,7 @@ full_buffer:
 
 flow_error:
   {
+    gst_buffer_unmap (inbuf, &minfo);
     if (inbuf)
       gst_buffer_unref (inbuf);
 
@@ -1192,6 +1196,7 @@ flow_error:
 
 too_large_codec_data:
   {
+    gst_buffer_unmap (inbuf, &minfo);
     if (inbuf)
       gst_buffer_unref (inbuf);
 
@@ -1204,6 +1209,7 @@ too_large_codec_data:
 
 component_error:
   {
+    gst_buffer_unmap (inbuf, &minfo);
     if (inbuf)
       gst_buffer_unref (inbuf);
 
@@ -1216,6 +1222,7 @@ component_error:
 
 flushing:
   {
+    gst_buffer_unmap (inbuf, &minfo);
     if (inbuf)
       gst_buffer_unref (inbuf);
 
@@ -1224,6 +1231,7 @@ flushing:
   }
 reconfigure_error:
   {
+    gst_buffer_unmap (inbuf, &minfo);
     if (inbuf)
       gst_buffer_unref (inbuf);
 
@@ -1233,6 +1241,7 @@ reconfigure_error:
   }
 release_error:
   {
+    gst_buffer_unmap (inbuf, &minfo);
     if (inbuf)
       gst_buffer_unref (inbuf);
 
