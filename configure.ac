@@ -261,6 +261,22 @@ elif test x"$ac_cv_omx_target_struct_packing" != x"none"; then
   AC_DEFINE_UNQUOTED(GST_OMX_STRUCT_PACKING, $ac_cv_omx_target_struct_packing, [The struct packing used for OpenMAX structures])
 fi
 
+dnl check for dmabuf support
+AC_ARG_ENABLE([dmabuf],
+             [AS_HELP_STRING([--disable-dmabuf],
+                             [Disable dmabuf even if you have mmngrbuf library])],
+             [],
+             [enable_dmabuf=yes]
+             )
+
+if test "x${enable_dmabuf}" = "xyes"; then
+  dnl check mmngrbuf library to use dmabuf exporter
+  AC_CHECK_LIB([mmngrbuf], [mmngr_export_start_in_user],
+             [AC_DEFINE(HAVE_MMNGRBUF, 1, [Define if you have mmngrbuf library])
+              GST_LIBS="$GST_LIBS -lmmngrbuf"
+             ])
+fi
+
 dnl *** set variables based on configure arguments ***
 
 dnl set license and copyright notice

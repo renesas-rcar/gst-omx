@@ -1,6 +1,7 @@
 /*
  * Copyright 2014 Advanced Micro Devices, Inc.
  *   Author: Christian König <christian.koenig@amd.com>
+ * Copyright (C) 2015, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -30,6 +31,11 @@
 #include <gst/video/gstvideopool.h>
 
 #include "gstomx.h"
+#ifdef HAVE_MMNGRBUF
+#include "gst/allocators/gstdmabuf.h"
+#include "mmngr_buf_user_public.h"
+#include "OMXR_Extension_vdcmn.h"
+#endif
 
 G_BEGIN_DECLS
 
@@ -42,6 +48,9 @@ G_BEGIN_DECLS
 
 typedef struct _GstOMXBufferPool GstOMXBufferPool;
 typedef struct _GstOMXBufferPoolClass GstOMXBufferPoolClass;
+#ifdef HAVE_MMNGRBUF
+typedef struct _GstOMXVideoDecBufferData GstOMXVideoDecBufferData;
+#endif
 
 struct _GstOMXBufferPool
 {
@@ -84,6 +93,12 @@ struct _GstOMXBufferPoolClass
 {
   GstVideoBufferPoolClass parent_class;
 };
+#ifdef HAVE_MMNGRBUF
+struct _GstOMXVideoDecBufferData
+{
+  gint id_export[GST_VIDEO_MAX_PLANES];
+};
+#endif
 
 GType gst_omx_buffer_pool_get_type (void);
 

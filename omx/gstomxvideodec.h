@@ -88,6 +88,8 @@ struct _GstOMXVideoDec
    * downstream
    */
   gboolean no_copy;
+  /* Set TRUE to use dmabuf to transfer decoded data */
+  gboolean use_dmabuf;
 };
 
 struct _GstOMXVideoDecClass
