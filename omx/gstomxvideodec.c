@@ -3,6 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
+ * Copyright (C) 2015, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -428,22 +429,13 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
     goto done;
   }
 
-  /* Same strides and everything */
-  if (gst_buffer_get_size (outbuf) == inbuf->omx_buf->nFilledLen) {
-    GstMapInfo map = GST_MAP_INFO_INIT;
-
-    if (!gst_buffer_map (outbuf, &map, GST_MAP_WRITE)) {
-      GST_ERROR_OBJECT (self, "Failed to map output buffer");
-      goto done;
-    }
-
-    memcpy (map.data,
-        inbuf->omx_buf->pBuffer + inbuf->omx_buf->nOffset,
-        inbuf->omx_buf->nFilledLen);
-    gst_buffer_unmap (outbuf, &map);
-    ret = TRUE;
-    goto done;
-  }
+/* Try using gst_video_frame_map() before use gst_buffer_map() because
+ * gst_buffer_map() could return the different pointer from the
+ * buffers received from the sink plugin. If sink plugin return multiple
+ * seperated blocks, gst_buffer_map() can create a new allocation to
+ * collect discontiguous data into a region.
+ * It is safety to use gst_video_frame_map() for all cases instead.
+ */
 
   /* Different strides */
   if (gst_video_frame_map (&frame, vinfo, outbuf, GST_MAP_WRITE)) {
@@ -521,8 +513,25 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
     gst_video_frame_unmap (&frame);
     ret = TRUE;
   } else {
-    GST_ERROR_OBJECT (self, "Can't map output buffer to frame");
-    goto done;
+    GST_WARNING_OBJECT (self, "Can't map output buffer to frame \
+                        Try with map output to buffer");
+    /* Try using gst_buffer_map() if gst_video_frame_map() fail */
+    /* Same strides and everything */
+    if (gst_buffer_get_size (outbuf) == inbuf->omx_buf->nFilledLen) {
+      GstMapInfo map = GST_MAP_INFO_INIT;
+
+      if (!gst_buffer_map (outbuf, &map, GST_MAP_WRITE)) {
+        GST_ERROR_OBJECT (self, "Failed to map output buffer");
+        goto done;
+      }
+
+      memcpy (map.data,
+          inbuf->omx_buf->pBuffer + inbuf->omx_buf->nOffset,
+          inbuf->omx_buf->nFilledLen);
+      gst_buffer_unmap (outbuf, &map);
+      ret = TRUE;
+      goto done;
+    }
   }
 
 done:
@@ -1328,6 +1337,12 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           format, port_def.format.video.nFrameWidth,
           port_def.format.video.nFrameHeight, self->input_state);
 
+     /* Update the cached data of output port definition after it changes
+      * This change reflects the change by negotiating caps with
+      * downstream
+      */
+      gst_omx_port_update_port_definition (self->dec_out_port, NULL);
+
       /* Take framerate and pixel-aspect-ratio from sinkpad caps */
 
       if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
@@ -2044,6 +2059,16 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
   /* Unset flushing to allow ports to accept data again */
   gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, FALSE);
   gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
+
+  /* All of the output buffers must be populated in the component with
+   * FillThisBuffer() beforehand so that gst_omx_video_dec_loop() waits
+   * for output buffers to be obtained properly.
+   * This can not perform while the flushing flag is set
+   */
+  if (!needs_disable) {
+    if (gst_omx_port_populate (self->dec_out_port) != OMX_ErrorNone)
+      return FALSE;
+  }
 
   if (gst_omx_component_get_last_error (self->dec) != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
