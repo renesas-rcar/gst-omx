@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2015, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -83,6 +84,10 @@ struct _GstOMXVideoDec
   GstOMXPort *egl_in_port, *egl_out_port;
   gboolean eglimage;
 #endif
+  /* Set TRUE to use GstBuffer of Bufferpool to transfer data to
+   * downstream
+   */
+  gboolean no_copy;
 };
 
 struct _GstOMXVideoDecClass
