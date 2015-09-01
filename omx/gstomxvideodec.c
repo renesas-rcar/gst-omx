@@ -1308,6 +1308,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
   GstOMXAcquireBufferReturn acq_return;
   GstClockTimeDiff deadline;
   OMX_ERRORTYPE err;
+  GstOMXVideoDecClass *klass = GST_OMX_VIDEO_DEC_GET_CLASS (self);
 
 #if defined (USE_OMX_TARGET_RPI) && defined (HAVE_GST_GL)
   port = self->eglimage ? self->egl_out_port : self->dec_out_port;
@@ -1396,6 +1397,11 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       gst_omx_port_update_port_definition (self->dec_out_port, NULL);
 
       /* Take framerate and pixel-aspect-ratio from sinkpad caps */
+      if (klass->cdata.hacks & GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO) {
+        /* Set pixel-aspect-ratio is 1/1. It means that always keep
+         * original image when display   */
+        state->info.par_d = state->info.par_n;
+      }
 
       if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
         if (buf)
