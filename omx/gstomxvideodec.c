@@ -279,6 +279,25 @@ gst_omx_video_dec_open (GstVideoDecoder * decoder)
   GST_DEBUG_OBJECT (self, "Opened EGL renderer");
 #endif
 
+  /* Use hacks to choose default mode, normally default mode is dmabuf */
+  if (!(klass->cdata.hacks & GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT &&
+        klass->cdata.hacks & GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT))
+  {
+    if (klass->cdata.hacks & GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT)
+    {
+      GST_DEBUG_OBJECT (self, "Use copy mode as default");
+      self->no_copy = FALSE;
+      self->use_dmabuf = FALSE;
+    }
+    if (klass->cdata.hacks & GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT)
+    {
+      GST_DEBUG_OBJECT (self, "Use no-copy mode as default");
+      self->no_copy = TRUE;
+      self->use_dmabuf = FALSE;
+    }
+  } else
+    GST_DEBUG_OBJECT (self, "Use dmabuf mode as default");
+
   return TRUE;
 }
 

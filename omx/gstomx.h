@@ -117,6 +117,16 @@ G_BEGIN_DECLS
  */
 #define GST_OMX_HACK_NO_DISABLE_OUTPORT                               G_GUINT64_CONSTANT (0x0000000000000100)
 
+/* omx videodecoder support 3 modes (copy, no-copy(use buffer of Bufferpool), dmabuf) to choose.
+ * Default is dmabuf mode. This hack will choose copy mode is default mode
+ */
+#define GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT                       G_GUINT64_CONSTANT (0x0000000000000200)
+
+/* omx videodecoder support 3 modes (copy, no-copy(use buffer of Bufferpool), dmabuf) to choose.
+ * Default is dmabuf mode. This hack will choose no-copy mode is default mode
+ */
+#define GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT                       G_GUINT64_CONSTANT (0x0000000000000400)
+
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;
 typedef enum _GstOMXPortDirection GstOMXPortDirection;
