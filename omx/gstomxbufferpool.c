@@ -347,11 +347,13 @@ gst_omx_buffer_pool_export_dmabuf (GstOMXBufferPool * pool,
     gint * dmabuf_fd)
 {
   gint res;
+  gint tmpsize;
+
+  tmpsize = (size + boundary - 1) & ~(boundary - 1);
 
   res =
-      mmngr_export_start_in_user (id_export,
-      (size + boundary - 1) & ~(boundary - 1), (unsigned long) phys_addr,
-      dmabuf_fd);
+      mmngr_export_start_in_user_ext (id_export,
+      (gsize) tmpsize, phys_addr, dmabuf_fd, NULL);
   if (res != R_MM_OK) {
     GST_ERROR_OBJECT (pool,
         "mmngr_export_start_in_user failed (phys_addr:0x%08x)", phys_addr);
@@ -675,7 +677,7 @@ gst_omx_buffer_pool_free_buffer (GstBufferPool * bpool, GstBuffer * buffer)
     vdbuf_data = (GstOMXVideoDecBufferData *) omx_buf->private_data;
     for (i = 0; i < GST_VIDEO_INFO_N_PLANES (&pool->video_info); i++)
       if (vdbuf_data->id_export[i] >= 0)
-        mmngr_export_end_in_user (vdbuf_data->id_export[i]);
+        mmngr_export_end_in_user_ext (vdbuf_data->id_export[i]);
 
     g_slice_free (GstOMXVideoDecBufferData, omx_buf->private_data);
 #else
