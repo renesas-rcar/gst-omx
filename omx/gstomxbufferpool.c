@@ -364,6 +364,66 @@ gst_omx_buffer_pool_export_dmabuf (GstOMXBufferPool * pool,
   return TRUE;
 }
 
+static GstBuffer *
+gst_omx_buffer_pool_request_videosink_buffer_creation (GstOMXBufferPool * pool,
+    gint * dmabuf_fd, gint * stride)
+{
+  GstQuery *query;
+  GValue val = { 0, };
+  GstStructure *structure;
+  const GValue *value;
+  GstBuffer *buffer;
+  GArray *dmabuf_array;
+  GArray *stride_array;
+  gint n_planes;
+  gint i;
+
+  g_value_init (&val, G_TYPE_POINTER);
+  g_value_set_pointer (&val, (gpointer) pool->allocator);
+
+  dmabuf_array = g_array_new (FALSE, FALSE, sizeof (gint));
+  stride_array = g_array_new (FALSE, FALSE, sizeof (gint));
+
+  n_planes = GST_VIDEO_INFO_N_PLANES (&pool->video_info);
+  for (i = 0; i < n_planes; i++) {
+    g_array_append_val (dmabuf_array, *(dmabuf_fd + i));
+    g_array_append_val (stride_array, *(stride + i));
+  }
+
+  structure = gst_structure_new ("videosink_buffer_creation_request",
+      "width", G_TYPE_INT, pool->port->port_def.format.video.nFrameWidth,
+      "height", G_TYPE_INT, pool->port->port_def.format.video.nFrameHeight,
+      "stride", G_TYPE_ARRAY, stride_array,
+      "dmabuf", G_TYPE_ARRAY, dmabuf_array,
+      "allocator", G_TYPE_POINTER, &val,
+      "format", G_TYPE_STRING,
+      gst_video_format_to_string (pool->video_info.finfo->format),
+      "n_planes", G_TYPE_INT, n_planes, NULL);
+
+  query = gst_query_new_custom (GST_QUERY_CUSTOM, structure);
+
+  GST_DEBUG_OBJECT (pool, "send a videosink_buffer_creation_request query");
+
+  if (!gst_pad_peer_query (GST_VIDEO_DECODER_SRC_PAD (pool->element), query)) {
+    GST_ERROR_OBJECT (pool, "videosink_buffer_creation_request query failed");
+    return NULL;
+  }
+
+  value = gst_structure_get_value (structure, "buffer");
+  buffer = gst_value_get_buffer (value);
+  if (buffer == NULL) {
+    GST_ERROR_OBJECT (pool,
+        "could not get a buffer from videosink_buffer_creation query");
+    return NULL;
+  }
+
+  gst_query_unref (query);
+  g_array_free (dmabuf_array, TRUE);
+  g_array_free (stride_array, TRUE);
+
+  return buffer;
+}
+
 /* This function will create a GstBuffer contain dmabuf_fd of decoded
  * video got from Media Component
  */
@@ -415,18 +475,29 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
 
   }
   omx_buf->private_data = (void *) vdbuf_data;
-  new_buf = gst_buffer_new ();
-  for (i = 0; i < GST_VIDEO_INFO_N_PLANES(&self->video_info); i++)
-    gst_buffer_append_memory (new_buf,
-          gst_dmabuf_allocator_alloc (self->allocator, dmabuf_fd[i],
-              plane_size[i]));
-  g_ptr_array_add (self->buffers, new_buf);
-  gst_buffer_add_video_meta_full (new_buf, GST_VIDEO_FRAME_FLAG_NONE,
-        GST_VIDEO_INFO_FORMAT (&self->video_info),
-        GST_VIDEO_INFO_WIDTH (&self->video_info),
-        GST_VIDEO_INFO_HEIGHT (&self->video_info),
-        GST_VIDEO_INFO_N_PLANES (&self->video_info), offset,
-        stride);
+  if (self->vsink_buf_req_supported) {
+    new_buf = gst_omx_buffer_pool_request_videosink_buffer_creation(self, &dmabuf_fd, stride);
+    if (!new_buf)
+    {
+        GST_ERROR_OBJECT (self,
+          "Can not query gstBuffer contain dma_fd");
+        return GST_FLOW_ERROR;
+    }
+    g_ptr_array_add (self->buffers, new_buf);
+  } else {
+    new_buf = gst_buffer_new ();
+    for (i = 0; i < GST_VIDEO_INFO_N_PLANES(&self->video_info); i++)
+      gst_buffer_append_memory (new_buf,
+            gst_dmabuf_allocator_alloc (self->allocator, dmabuf_fd[i],
+                plane_size[i]));
+    g_ptr_array_add (self->buffers, new_buf);
+    gst_buffer_add_video_meta_full (new_buf, GST_VIDEO_FRAME_FLAG_NONE,
+          GST_VIDEO_INFO_FORMAT (&self->video_info),
+          GST_VIDEO_INFO_WIDTH (&self->video_info),
+          GST_VIDEO_INFO_HEIGHT (&self->video_info),
+          GST_VIDEO_INFO_N_PLANES (&self->video_info), offset,
+          stride);
+  }
   return new_buf;
 }
 #endif
@@ -752,6 +823,7 @@ gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 {
   pool->buffers = g_ptr_array_new ();
   pool->allocator = g_object_new (gst_omx_memory_allocator_get_type (), NULL);
+  pool->vsink_buf_req_supported = FALSE;
 }
 
 GstBufferPool *

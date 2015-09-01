@@ -2690,6 +2690,18 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
   self = GST_OMX_VIDEO_DEC (bdec);
   if (self->out_port_pool) {
     GstCaps *caps;
+    gboolean update_pool = FALSE;
+    if (gst_query_get_n_allocation_pools (query) > 0) {
+      gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, NULL, NULL);
+      g_assert (pool != NULL);
+
+      config = gst_buffer_pool_get_config (pool);
+      gst_structure_get_boolean (config,
+          "videosink_buffer_creation_request_supported",
+          &GST_OMX_BUFFER_POOL (self->out_port_pool)->vsink_buf_req_supported);
+      gst_object_unref (pool);
+      update_pool = TRUE;
+    }
     /* Set pool parameters to our own configuration */
     config = gst_buffer_pool_get_config (self->out_port_pool);
     gst_buffer_pool_config_add_option (config,
@@ -2714,10 +2726,16 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
     } else {
       GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = FALSE;
     }
-    gst_query_add_allocation_pool (query, self->out_port_pool,
-        self->dec_out_port->port_def.nBufferSize,
-        self->dec_out_port->port_def.nBufferCountActual,
-        self->dec_out_port->port_def.nBufferCountActual);
+    if (update_pool)
+      gst_query_set_nth_allocation_pool (query, 0, self->out_port_pool,
+         self->dec_out_port->port_def.nBufferSize,
+         self->dec_out_port->port_def.nBufferCountActual,
+         self->dec_out_port->port_def.nBufferCountActual);
+    else
+      gst_query_add_allocation_pool (query, self->out_port_pool,
+          self->dec_out_port->port_def.nBufferSize,
+          self->dec_out_port->port_def.nBufferCountActual,
+          self->dec_out_port->port_def.nBufferCountActual);
   } else {
     if (!GST_VIDEO_DECODER_CLASS
         (gst_omx_video_dec_parent_class)->decide_allocation (bdec, query))
