@@ -93,7 +93,8 @@ enum
 {
   PROP_0,
   PROP_NO_COPY,
-  PROP_USE_DMABUF
+  PROP_USE_DMABUF,
+  PROP_NO_REORDER
 };
 
 /* class initialization */
@@ -152,6 +153,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
         "Whether or not to transfer decoded data using dmabuf",
         TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
         GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_NO_REORDER,
+      g_param_spec_boolean ("no-reorder", "Use video frame without reordering",
+        "Whether or not to use video frame reordering",
+        FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+         GST_PARAM_MUTABLE_READY));
 }
 
 static void
@@ -165,6 +171,7 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
 #ifdef HAVE_MMNGRBUF
   self->use_dmabuf = TRUE;
 #endif
+  self->no_reorder = FALSE;
 }
 
 static gboolean
@@ -1411,8 +1418,12 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
    * stream, corrupted input data...
    * In any cases, not likely to be seen again. so drop it before they pile up
    * and use all the memory. */
-  gst_omx_video_dec_clean_older_frames (self, buf,
-      gst_video_decoder_get_frames (GST_VIDEO_DECODER (self)));
+  if (self->no_reorder == FALSE)
+    /* Only clean older frames in reorder mode. Do not clean in
+     * no_reorder mode, as in that mode the output frames are not in
+     * display order */
+    gst_omx_video_dec_clean_older_frames (self, buf,
+        gst_video_decoder_get_frames (GST_VIDEO_DECODER (self)));
 
   if (frame
       && (deadline = gst_video_decoder_get_max_decode_time
@@ -2000,6 +2011,21 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
       GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
       return FALSE;
     }
+  }
+
+  {
+    /* Setting reorder mode (output port only) */
+    OMXR_MC_VIDEO_PARAM_REORDERTYPE sReorder;
+    GST_OMX_INIT_STRUCT (&sReorder);
+    sReorder.nPortIndex = self->dec_out_port->index;  /* default */
+
+    if (self->no_reorder != FALSE)
+      sReorder.bReorder = OMX_FALSE;
+    else
+      sReorder.bReorder = OMX_TRUE;
+
+    gst_omx_component_set_parameter
+      (self->dec, OMXR_MC_IndexParamVideoReorder, &sReorder);
   }
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
@@ -2692,6 +2718,9 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     case PROP_USE_DMABUF:
       self->use_dmabuf = g_value_get_boolean (value);
       break;
+    case PROP_NO_REORDER:
+      self->no_reorder = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2709,6 +2738,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
       break;
     case PROP_USE_DMABUF:
       g_value_set_boolean (value, self->use_dmabuf);
+      break;
+    case PROP_NO_REORDER:
+      g_value_set_boolean (value, self->no_reorder);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
