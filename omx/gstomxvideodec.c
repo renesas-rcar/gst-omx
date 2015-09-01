@@ -107,6 +107,9 @@ enum
 G_DEFINE_ABSTRACT_TYPE_WITH_CODE (GstOMXVideoDec, gst_omx_video_dec,
     GST_TYPE_VIDEO_DECODER, DEBUG_INIT);
 
+/* Default fps for input files that does not support fps */
+#define DEFAULT_FRAME_PER_SECOND  30
+
 static void
 gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
 {
@@ -2258,6 +2261,11 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
         (GstTaskFunction) gst_omx_video_dec_loop, decoder, NULL);
   }
 
+  /* Workaround for timestamp issue */
+  if (!GST_CLOCK_TIME_IS_VALID (frame->pts) &&
+         GST_CLOCK_TIME_IS_VALID (frame->dts))
+    frame->pts = frame->dts;
+
   timestamp = frame->pts;
   duration = frame->duration;
 
@@ -2408,20 +2416,29 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
         buf->omx_buf->nFilledLen);
 
     if (timestamp != GST_CLOCK_TIME_NONE) {
-      buf->omx_buf->nTimeStamp =
-          gst_util_uint64_scale (timestamp, OMX_TICKS_PER_SECOND, GST_SECOND);
       self->last_upstream_ts = timestamp;
     } else {
-      buf->omx_buf->nTimeStamp = 0;
+      /* Video stream does not provide timestamp, try calculate */
+      if (offset == 0) {
+        if (duration != GST_CLOCK_TIME_NONE )
+          /* In case timestamp is invalid. may use duration to calculate
+           * timestamp */
+          self->last_upstream_ts += duration;
+        else
+          /* Use default fps value as last resort */
+          self->last_upstream_ts += gst_util_uint64_scale (1,
+                GST_SECOND, DEFAULT_FRAME_PER_SECOND);
+
+        timestamp = self->last_upstream_ts;
+        frame->pts = timestamp;
+      }
     }
 
-    if (duration != GST_CLOCK_TIME_NONE && offset == 0) {
-      buf->omx_buf->nTickCount =
-          gst_util_uint64_scale (duration, OMX_TICKS_PER_SECOND, GST_SECOND);
-      self->last_upstream_ts += duration;
-    } else {
-      buf->omx_buf->nTickCount = 0;
-    }
+    buf->omx_buf->nTimeStamp =
+      gst_util_uint64_scale (timestamp, OMX_TICKS_PER_SECOND, GST_SECOND);
+
+    buf->omx_buf->nTickCount =
+      gst_util_uint64_scale (buf->omx_buf->nFilledLen, duration, size);
 
     if (offset == 0 && GST_VIDEO_CODEC_FRAME_IS_SYNC_POINT (frame))
       buf->omx_buf->nFlags |= OMX_BUFFERFLAG_SYNCFRAME;
