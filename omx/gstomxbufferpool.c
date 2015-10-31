@@ -435,11 +435,10 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
 {
   gint dmabuf_fd[GST_VIDEO_MAX_PLANES];
   gint plane_size[GST_VIDEO_MAX_PLANES];
+  gint dmabuf_id[GST_VIDEO_MAX_PLANES];
   GstBuffer * new_buf;
   gint i;
   gint page_size;
-  GstOMXVideoDecBufferData *vdbuf_data;
-  vdbuf_data = g_slice_new (GstOMXVideoDecBufferData);
 
   GST_DEBUG_OBJECT (self, "Create dmabuf mem pBuffer=%p",
                                             omx_buf->omx_buf->pBuffer);
@@ -458,8 +457,7 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
     if (i != 0)
     {
       if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
-                   plane_size[i], page_size, &vdbuf_data->id_export[i],
-                                                      &dmabuf_fd[i])) {
+                   plane_size[i], page_size, &dmabuf_id[i], &dmabuf_fd[i])) {
         GST_ERROR_OBJECT (self, "dmabuf exporting failed");
         return GST_FLOW_ERROR;
       }
@@ -469,14 +467,13 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
        * contiguous memory is available. */
       if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
                           self->port->port_def.nBufferSize, page_size,
-                           &vdbuf_data->id_export[0], &dmabuf_fd[0])) {
+                           &dmabuf_id[0], &dmabuf_fd[0])) {
         GST_ERROR_OBJECT (self, "dmabuf exporting failed");
         return GST_FLOW_ERROR;
       }
     }
-
+    g_array_append_val (self->id_array, dmabuf_id[i]);
   }
-  omx_buf->private_data = (void *) vdbuf_data;
   if (self->vsink_buf_req_supported) {
     new_buf = gst_omx_buffer_pool_request_videosink_buffer_creation(self, &dmabuf_fd, stride);
     if (!new_buf)
@@ -664,28 +661,6 @@ gst_omx_buffer_pool_free_buffer (GstBufferPool * bpool, GstBuffer * buffer)
   }
   GST_OBJECT_UNLOCK (pool);
 
- if (GST_OMX_VIDEO_DEC(pool->element)->use_dmabuf)
-  {
-#ifdef HAVE_MMNGRBUF
-    GstOMXBuffer *omx_buf;
-    GstOMXVideoDecBufferData *vdbuf_data;
-    gint i;
-    omx_buf =
-      gst_mini_object_get_qdata (GST_MINI_OBJECT_CAST (buffer),
-      gst_omx_buffer_data_quark);
-
-    vdbuf_data = (GstOMXVideoDecBufferData *) omx_buf->private_data;
-    for (i = 0; i < GST_VIDEO_INFO_N_PLANES (&pool->video_info); i++)
-      if (vdbuf_data->id_export[i] >= 0)
-        mmngr_export_end_in_user_ext (vdbuf_data->id_export[i]);
-
-    g_slice_free (GstOMXVideoDecBufferData, omx_buf->private_data);
-#else
-    GST_ELEMENT_ERROR (pool->element, STREAM, FAILED, (NULL),
-        ("Do not have MMNGR_BUF, can not use dmabuf mode"));
-#endif
-  }
-
   gst_mini_object_set_qdata (GST_MINI_OBJECT_CAST (buffer),
       gst_omx_buffer_data_quark, NULL, NULL);
 
@@ -778,6 +753,24 @@ gst_omx_buffer_pool_finalize (GObject * object)
 {
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (object);
 
+#ifdef HAVE_MMNGRBUF
+  if (GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf) {
+    gint i;
+    gint dmabuf_id;
+
+    for (i = 0; i < pool->id_array->len; i++) {
+      dmabuf_id = g_array_index (pool->id_array, gint, i);
+      if (dmabuf_id >= 0) {
+        GST_DEBUG_OBJECT (pool, "mmngr_export_end_in_user (%d)", dmabuf_id);
+        mmngr_export_end_in_user_ext (dmabuf_id);
+      } else {
+        GST_WARNING_OBJECT (pool, "Invalid dmabuf_id");
+      }
+    }
+  }
+  g_array_free (pool->id_array, TRUE);
+#endif
+
   if (pool->element)
     gst_object_unref (pool->element);
   pool->element = NULL;
@@ -826,6 +819,9 @@ gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
   pool->buffers = g_ptr_array_new ();
   pool->allocator = g_object_new (gst_omx_memory_allocator_get_type (), NULL);
   pool->vsink_buf_req_supported = FALSE;
+#ifdef HAVE_MMNGRBUF
+  pool->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
+#endif
 }
 
 GstBufferPool *
