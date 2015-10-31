@@ -436,28 +436,26 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
   gint dmabuf_fd[GST_VIDEO_MAX_PLANES];
   gint plane_size[GST_VIDEO_MAX_PLANES];
   gint dmabuf_id[GST_VIDEO_MAX_PLANES];
-  GstBuffer * new_buf;
+  GstBuffer *new_buf;
   gint i;
   gint page_size;
 
   GST_DEBUG_OBJECT (self, "Create dmabuf mem pBuffer=%p",
-                                            omx_buf->omx_buf->pBuffer);
+      omx_buf->omx_buf->pBuffer);
 
   for (i = 0; i < GST_VIDEO_INFO_N_PLANES (&self->video_info); i++) {
     gint res;
     guint phys_addr;
     OMXR_MC_VIDEO_DECODERESULTTYPE *decode_res =
-        (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->
-        omx_buf->pOutputPortPrivate;
+        (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->omx_buf->pOutputPortPrivate;
 
     phys_addr = (guint) decode_res->pvPhysImageAddressY + offset[i];
     plane_size[i] = stride[i] *
-            GST_VIDEO_INFO_COMP_HEIGHT (&self->video_info, i);
+        GST_VIDEO_INFO_COMP_HEIGHT (&self->video_info, i);
     page_size = getpagesize ();
-    if (i != 0)
-    {
+    if (i != 0) {
       if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
-                   plane_size[i], page_size, &dmabuf_id[i], &dmabuf_fd[i])) {
+              plane_size[i], page_size, &dmabuf_id[i], &dmabuf_fd[i])) {
         GST_ERROR_OBJECT (self, "dmabuf exporting failed");
         return GST_FLOW_ERROR;
       }
@@ -466,8 +464,8 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
        * the end of the buffer so that mapping the whole plane as
        * contiguous memory is available. */
       if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
-                          self->port->port_def.nBufferSize, page_size,
-                           &dmabuf_id[0], &dmabuf_fd[0])) {
+              self->port->port_def.nBufferSize, page_size,
+              &dmabuf_id[0], &dmabuf_fd[0])) {
         GST_ERROR_OBJECT (self, "dmabuf exporting failed");
         return GST_FLOW_ERROR;
       }
@@ -475,27 +473,26 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
     g_array_append_val (self->id_array, dmabuf_id[i]);
   }
   if (self->vsink_buf_req_supported) {
-    new_buf = gst_omx_buffer_pool_request_videosink_buffer_creation(self, &dmabuf_fd, stride);
-    if (!new_buf)
-    {
-        GST_ERROR_OBJECT (self,
-          "Can not query gstBuffer contain dma_fd");
-        return GST_FLOW_ERROR;
+    new_buf =
+        gst_omx_buffer_pool_request_videosink_buffer_creation (self, &dmabuf_fd,
+        stride);
+    if (!new_buf) {
+      GST_ERROR_OBJECT (self, "Can not query gstBuffer contain dma_fd");
+      return GST_FLOW_ERROR;
     }
     g_ptr_array_add (self->buffers, new_buf);
   } else {
     new_buf = gst_buffer_new ();
-    for (i = 0; i < GST_VIDEO_INFO_N_PLANES(&self->video_info); i++)
+    for (i = 0; i < GST_VIDEO_INFO_N_PLANES (&self->video_info); i++)
       gst_buffer_append_memory (new_buf,
-            gst_dmabuf_allocator_alloc (self->allocator, dmabuf_fd[i],
-                plane_size[i]));
+          gst_dmabuf_allocator_alloc (self->allocator, dmabuf_fd[i],
+              plane_size[i]));
     g_ptr_array_add (self->buffers, new_buf);
     gst_buffer_add_video_meta_full (new_buf, GST_VIDEO_FRAME_FLAG_NONE,
-          GST_VIDEO_INFO_FORMAT (&self->video_info),
-          GST_VIDEO_INFO_WIDTH (&self->video_info),
-          GST_VIDEO_INFO_HEIGHT (&self->video_info),
-          GST_VIDEO_INFO_N_PLANES (&self->video_info), offset,
-          stride);
+        GST_VIDEO_INFO_FORMAT (&self->video_info),
+        GST_VIDEO_INFO_WIDTH (&self->video_info),
+        GST_VIDEO_INFO_HEIGHT (&self->video_info),
+        GST_VIDEO_INFO_N_PLANES (&self->video_info), offset, stride);
   }
   return new_buf;
 }
@@ -579,25 +576,23 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
         break;
     }
 
-   if (GST_OMX_VIDEO_DEC(pool->element)->use_dmabuf) {
+    if (GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf) {
 #ifdef HAVE_MMNGRBUF
       if (pool->allocator)
         gst_object_unref (pool->allocator);
       pool->allocator = gst_dmabuf_allocator_new ();
-      buf = gst_omx_buffer_pool_create_buffer_contain_dmabuf(pool,
-                                             omx_buf, &stride, &offset);
-      if (!buf)
-      {
-        GST_ERROR_OBJECT (pool,
-          "Can not create buffer contain dmabuf");
+      buf = gst_omx_buffer_pool_create_buffer_contain_dmabuf (pool,
+          omx_buf, &stride, &offset);
+      if (!buf) {
+        GST_ERROR_OBJECT (pool, "Can not create buffer contain dmabuf");
         return GST_FLOW_ERROR;
       }
 #else
-    GST_ELEMENT_ERROR (pool->element, STREAM, FAILED, (NULL),
-        ("Do not have MMNGR_BUF, can not use dmabuf mode"));
-    return GST_FLOW_ERROR;
+      GST_ELEMENT_ERROR (pool->element, STREAM, FAILED, (NULL),
+          ("Do not have MMNGR_BUF, can not use dmabuf mode"));
+      return GST_FLOW_ERROR;
 #endif
-   } else {
+    } else {
       mem = gst_omx_memory_allocator_alloc (pool->allocator, 0, omx_buf);
       buf = gst_buffer_new ();
       gst_buffer_append_memory (buf, mem);
@@ -687,7 +682,7 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
 
     /* If it's our own memory we have to set the sizes */
     if ((!pool->other_pool) &&
-            ((GST_OMX_VIDEO_DEC(pool->element)->use_dmabuf) == FALSE)) {
+        ((GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf) == FALSE)) {
       GstMemory *mem = gst_buffer_peek_memory (*buffer, 0);
 
       g_assert (mem

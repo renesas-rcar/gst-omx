@@ -147,20 +147,20 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
       "width = " GST_VIDEO_SIZE_RANGE ", "
       "height = " GST_VIDEO_SIZE_RANGE ", " "framerate = " GST_VIDEO_FPS_RANGE;
   g_object_class_install_property (gobject_class, PROP_NO_COPY,
-    g_param_spec_boolean ("no-copy", "No copy",
-      "Whether or not to transfer decoded data without copy",
-      FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-      GST_PARAM_MUTABLE_READY));
+      g_param_spec_boolean ("no-copy", "No copy",
+          "Whether or not to transfer decoded data without copy",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject_class, PROP_USE_DMABUF,
       g_param_spec_boolean ("use-dmabuf", "Use dmabuffer ",
-        "Whether or not to transfer decoded data using dmabuf",
-        TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-        GST_PARAM_MUTABLE_READY));
+          "Whether or not to transfer decoded data using dmabuf",
+          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject_class, PROP_NO_REORDER,
       g_param_spec_boolean ("no-reorder", "Use video frame without reordering",
-        "Whether or not to use video frame reordering",
-        FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-         GST_PARAM_MUTABLE_READY));
+          "Whether or not to use video frame reordering",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 }
 
 static void
@@ -281,16 +281,13 @@ gst_omx_video_dec_open (GstVideoDecoder * decoder)
 
   /* Use hacks to choose default mode, normally default mode is dmabuf */
   if (!(klass->cdata.hacks & GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT &&
-        klass->cdata.hacks & GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT))
-  {
-    if (klass->cdata.hacks & GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT)
-    {
+          klass->cdata.hacks & GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT)) {
+    if (klass->cdata.hacks & GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT) {
       GST_DEBUG_OBJECT (self, "Use copy mode as default");
       self->no_copy = FALSE;
       self->use_dmabuf = FALSE;
     }
-    if (klass->cdata.hacks & GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT)
-    {
+    if (klass->cdata.hacks & GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT) {
       GST_DEBUG_OBJECT (self, "Use no-copy mode as default");
       self->no_copy = TRUE;
       self->use_dmabuf = FALSE;
@@ -566,7 +563,7 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
     ret = TRUE;
   } else {
     GST_WARNING_OBJECT (self, "Can't map output buffer to frame \
-                        Try with map output to buffer");
+        Try with map output to buffer");
     /* Try using gst_buffer_map() if gst_video_frame_map() fail */
     /* Same strides and everything */
     if (gst_buffer_get_size (outbuf) == inbuf->omx_buf->nFilledLen) {
@@ -1390,10 +1387,10 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           format, port_def.format.video.nFrameWidth,
           port_def.format.video.nFrameHeight, self->input_state);
 
-     /* Update the cached data of output port definition after it changes
-      * This change reflects the change by negotiating caps with
-      * downstream
-      */
+      /* Update the cached data of output port definition after it changes
+       * This change reflects the change by negotiating caps with
+       * downstream
+       */
       gst_omx_port_update_port_definition (self->dec_out_port, NULL);
 
       /* Take framerate and pixel-aspect-ratio from sinkpad caps */
@@ -2045,15 +2042,15 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     /* Setting reorder mode (output port only) */
     OMXR_MC_VIDEO_PARAM_REORDERTYPE sReorder;
     GST_OMX_INIT_STRUCT (&sReorder);
-    sReorder.nPortIndex = self->dec_out_port->index;  /* default */
+    sReorder.nPortIndex = self->dec_out_port->index;    /* default */
 
     if (self->no_reorder != FALSE)
       sReorder.bReorder = OMX_FALSE;
     else
       sReorder.bReorder = OMX_TRUE;
 
-    gst_omx_component_set_parameter
-      (self->dec, OMXR_MC_IndexParamVideoReorder, &sReorder);
+    gst_omx_component_set_parameter (self->dec, OMXR_MC_IndexParamVideoReorder,
+        &sReorder);
   }
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
@@ -2288,7 +2285,7 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
 
   /* Workaround for timestamp issue */
   if (!GST_CLOCK_TIME_IS_VALID (frame->pts) &&
-         GST_CLOCK_TIME_IS_VALID (frame->dts))
+      GST_CLOCK_TIME_IS_VALID (frame->dts))
     frame->pts = frame->dts;
 
   timestamp = frame->pts;
@@ -2445,14 +2442,14 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
     } else {
       /* Video stream does not provide timestamp, try calculate */
       if (offset == 0) {
-        if (duration != GST_CLOCK_TIME_NONE )
+        if (duration != GST_CLOCK_TIME_NONE)
           /* In case timestamp is invalid. may use duration to calculate
            * timestamp */
           self->last_upstream_ts += duration;
         else
           /* Use default fps value as last resort */
           self->last_upstream_ts += gst_util_uint64_scale (1,
-                GST_SECOND, DEFAULT_FRAME_PER_SECOND);
+              GST_SECOND, DEFAULT_FRAME_PER_SECOND);
 
         timestamp = self->last_upstream_ts;
         frame->pts = timestamp;
@@ -2460,10 +2457,10 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
     }
 
     buf->omx_buf->nTimeStamp =
-      gst_util_uint64_scale (timestamp, OMX_TICKS_PER_SECOND, GST_SECOND);
+        gst_util_uint64_scale (timestamp, OMX_TICKS_PER_SECOND, GST_SECOND);
 
     buf->omx_buf->nTickCount =
-      gst_util_uint64_scale (buf->omx_buf->nFilledLen, duration, size);
+        gst_util_uint64_scale (buf->omx_buf->nFilledLen, duration, size);
 
     if (offset == 0 && GST_VIDEO_CODEC_FRAME_IS_SYNC_POINT (frame))
       buf->omx_buf->nFlags |= OMX_BUFFERFLAG_SYNCFRAME;
@@ -2711,7 +2708,7 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
     /* Set pool parameters to our own configuration */
     config = gst_buffer_pool_get_config (self->out_port_pool);
     gst_buffer_pool_config_add_option (config,
-         GST_BUFFER_POOL_OPTION_VIDEO_META);
+        GST_BUFFER_POOL_OPTION_VIDEO_META);
     gst_query_parse_allocation (query, &caps, NULL);
     gst_buffer_pool_config_set_params (config, caps,
         self->dec_out_port->port_def.nBufferSize,
@@ -2734,9 +2731,9 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
     }
     if (update_pool)
       gst_query_set_nth_allocation_pool (query, 0, self->out_port_pool,
-         self->dec_out_port->port_def.nBufferSize,
-         self->dec_out_port->port_def.nBufferCountActual,
-         self->dec_out_port->port_def.nBufferCountActual);
+          self->dec_out_port->port_def.nBufferSize,
+          self->dec_out_port->port_def.nBufferCountActual,
+          self->dec_out_port->port_def.nBufferCountActual);
     else
       gst_query_add_allocation_pool (query, self->out_port_pool,
           self->dec_out_port->port_def.nBufferSize,
@@ -2762,6 +2759,7 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
 
   return TRUE;
 }
+
 static void
 gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
@@ -2786,6 +2784,7 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
       break;
   }
 }
+
 static void
 gst_omx_video_dec_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
