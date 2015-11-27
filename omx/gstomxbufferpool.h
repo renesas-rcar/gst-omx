@@ -48,9 +48,6 @@ G_BEGIN_DECLS
 
 typedef struct _GstOMXBufferPool GstOMXBufferPool;
 typedef struct _GstOMXBufferPoolClass GstOMXBufferPoolClass;
-#ifdef HAVE_MMNGRBUF
-typedef struct _GstOMXVideoDecBufferData GstOMXVideoDecBufferData;
-#endif
 
 struct _GstOMXBufferPool
 {
