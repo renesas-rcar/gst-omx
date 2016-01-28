@@ -24,6 +24,9 @@
 #include <gst/gst.h>
 
 #include "gstomxwmadec.h"
+#ifdef HAVE_AUDIO_EXT
+#include "OMXR_Extension_audio.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_wma_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_wma_dec_debug_category
@@ -168,7 +171,23 @@ gst_omx_wma_dec_set_format (GstOMXAudioDec * dec, GstOMXPort * port,
         gst_omx_error_to_string (err), err);
     return FALSE;
   }
+#ifdef HAVE_AUDIO_EXT
+  /* Set output pcm unit */
+  {
+    OMXR_MC_AUDIO_PARAM_OUTPUTUNITTYPE unit;
+    GST_OMX_INIT_STRUCT (&unit);
+    unit.nPortIndex = dec->dec_out_port->index;
+    unit.eUnit = OMXR_MC_AUDIO_UnitPayload;
+    err = gst_omx_component_set_parameter (dec->dec,
+        OMXR_MC_IndexParamAudioOutputUnit, &unit);
 
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (self, "Error setting Unit parameters: %s (0x%08x)",
+          gst_omx_error_to_string (err), err);
+      return FALSE;
+    }
+  }
+#endif
   return TRUE;
 }
 
