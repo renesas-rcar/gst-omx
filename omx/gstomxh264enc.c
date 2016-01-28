@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2015, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -272,9 +273,15 @@ gst_omx_h264_enc_set_format (GstOMXVideoEnc * enc, GstOMXPort * port,
     GST_OMX_INIT_STRUCT (&config_avcintraperiod);
     config_avcintraperiod.nPortIndex =
         GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
+#ifdef USE_OMX_TARGET_RCAR
+    err =
+        gst_omx_component_get_config (GST_OMX_VIDEO_ENC (self)->enc,
+        OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+#else
     err =
         gst_omx_component_get_parameter (GST_OMX_VIDEO_ENC (self)->enc,
         OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+#endif
     if (err != OMX_ErrorNone) {
       GST_ERROR_OBJECT (self,
           "can't get OMX_IndexConfigVideoAVCIntraPeriod %s (0x%08x)",
@@ -295,10 +302,15 @@ gst_omx_h264_enc_set_format (GstOMXVideoEnc * enc, GstOMXPort * port,
         GST_OMX_H264_VIDEO_ENC_INTERVAL_OF_CODING_INTRA_FRAMES_DEFAULT) {
       config_avcintraperiod.nPFrames = self->interval_intraframes;
     }
-
+#ifdef USE_OMX_TARGET_RCAR
+    err =
+        gst_omx_component_set_config (GST_OMX_VIDEO_ENC (self)->enc,
+        OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+#else
     err =
         gst_omx_component_set_parameter (GST_OMX_VIDEO_ENC (self)->enc,
         OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+#endif
     if (err != OMX_ErrorNone) {
       GST_ERROR_OBJECT (self,
           "can't set OMX_IndexConfigVideoAVCIntraPeriod %s (0x%08x)",
