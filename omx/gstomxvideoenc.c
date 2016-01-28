@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2015, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -1021,9 +1022,19 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
     port_def.format.video.nStride =
         (info->width + port_def.nBufferAlignment - 1) &
         (~(port_def.nBufferAlignment - 1));
-  else
-    port_def.format.video.nStride = GST_ROUND_UP_4 (info->width);       /* safe (?) default */
-
+  else {
+    if (klass->cdata.hacks & GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN) {
+      switch (port_def.format.video.eColorFormat) {
+        case OMX_COLOR_FormatYUV420Planar:
+          port_def.format.video.nStride = GST_ROUND_UP_64 (info->width);
+          break;
+        case OMX_COLOR_FormatYUV420SemiPlanar:
+          port_def.format.video.nStride = GST_ROUND_UP_32 (info->width);
+          break;
+      }
+    } else
+      port_def.format.video.nStride = GST_ROUND_UP_4 (info->width);     /* safe (?) default */
+  }
   port_def.format.video.nFrameHeight = info->height;
   port_def.format.video.nSliceHeight = info->height;
 
