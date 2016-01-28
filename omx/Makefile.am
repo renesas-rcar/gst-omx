@@ -22,6 +22,7 @@ libgstomx_la_SOURCES = \
 	gstomxmpeg4videodec.c \
 	gstomxmpeg2videodec.c \
 	gstomxh264dec.c \
+	gstomxh265dec.c \
 	gstomxh263dec.c \
 	gstomxwmvdec.c \
 	$(VP8_C_FILES) \
@@ -48,6 +49,7 @@ noinst_HEADERS = \
 	gstomxmpeg2videodec.h \
 	gstomxmpeg4videodec.h \
 	gstomxh264dec.h \
+	gstomxh265dec.h \
 	gstomxh263dec.h \
 	gstomxwmvdec.h \
 	$(VP8_H_FILES) \

@@ -34,6 +34,7 @@
 #include "gstomxmpeg4videodec.h"
 #include "gstomxh264dec.h"
 #include "gstomxh263dec.h"
+#include "gstomxh265dec.h"
 #include "gstomxvp8dec.h"
 #include "gstomxtheoradec.h"
 #include "gstomxwmvdec.h"
@@ -2255,6 +2256,7 @@ static const GGetTypeFunction types[] = {
 #ifdef HAVE_THEORA
       , gst_omx_theora_dec_get_type
 #endif
+  , gst_omx_h265_dec_get_type
 };
 
 struct TypeOffest
