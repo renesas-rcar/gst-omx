@@ -29,6 +29,9 @@
 
 #include "gstomxvideo.h"
 #include "gstomxvideoenc.h"
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+#include "OMXR_Extension_vecmn.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
@@ -53,6 +56,30 @@ gst_omx_video_enc_control_rate_get_type (void)
     };
 
     qtype = g_enum_register_static ("GstOMXVideoEncControlRate", values);
+  }
+  return qtype;
+}
+
+#define GST_TYPE_OMX_VIDEO_ENC_SCAN_TYPE (gst_omx_video_enc_get_scantype ())
+static GType
+gst_omx_video_enc_get_scantype (void)
+{
+  static GType qtype = 0;
+
+  if (qtype == 0) {
+    static const GEnumValue values[] = {
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+      {OMXR_MC_VIDEO_MemAllocFrame, "Progressive", "progressive"},
+      {OMXR_MC_VIDEO_MemAllocFieldTff, "Interlaced Top Field First",
+          "interlaced-Tff"},
+      {OMXR_MC_VIDEO_MemAllocFieldBff, "Interlaced Bottom Field First",
+          "interlaced-Bff"},
+#endif
+      {0xffffffff, "Component Default", "default"},
+      {0, NULL, NULL},
+    };
+
+    qtype = g_enum_register_static ("GstOMXVideoEncScanType", values);
   }
   return qtype;
 }
@@ -97,7 +124,8 @@ enum
   PROP_TARGET_BITRATE,
   PROP_QUANT_I_FRAMES,
   PROP_QUANT_P_FRAMES,
-  PROP_QUANT_B_FRAMES
+  PROP_QUANT_B_FRAMES,
+  PROP_SCAN_TYPE
 };
 
 /* FIXME: Better defaults */
@@ -106,6 +134,7 @@ enum
 #define GST_OMX_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT (0xffffffff)
 #define GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT (0xffffffff)
 #define GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT (0xffffffff)
+#define GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT (0xffffffff)
 
 /* class initialization */
 
@@ -163,6 +192,13 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
           0, G_MAXUINT, GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_SCAN_TYPE,
+      g_param_spec_enum ("scan-type", "Scan Type",
+          "Encode Scan Type method",
+          GST_TYPE_OMX_VIDEO_ENC_SCAN_TYPE,
+          GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_enc_change_state);
@@ -198,6 +234,7 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->quant_i_frames = GST_OMX_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT;
   self->quant_p_frames = GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
   self->quant_b_frames = GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
+  self->scan_type = GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT;
 
   g_mutex_init (&self->drain_lock);
   g_cond_init (&self->drain_cond);
@@ -346,6 +383,32 @@ gst_omx_video_enc_open (GstVideoEncoder * encoder)
 
       }
     }
+    if (self->scan_type != 0xffffffff) {
+      GST_DEBUG_OBJECT (self, "Setting memory alloc type parameter");
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+      OMXR_MC_VIDEO_PARAM_PICTURE_MEMORY_ALLOCTYPE alloctype_param;
+      GST_OMX_INIT_STRUCT (&alloctype_param);
+      alloctype_param.nPortIndex = self->enc_out_port->index;
+
+      err = gst_omx_component_get_parameter (self->enc,
+          OMXR_MC_IndexParamVideoPictureMemoryAlloc, &alloctype_param);
+      if (err == OMX_ErrorNone) {
+        alloctype_param.eMemoryAlloc = self->scan_type;
+        err =
+            gst_omx_component_set_parameter (self->enc,
+            OMXR_MC_IndexParamVideoPictureMemoryAlloc, &alloctype_param);
+        if (err != OMX_ErrorNone) {
+          GST_ERROR_OBJECT (self,
+              "Failed to set memory alloc type: %s (0x%08x)",
+              gst_omx_error_to_string (err), err);
+          return FALSE;
+        }
+      }
+#else
+      GST_ERROR_OBJECT (self,
+          "scan-type is invalid now due to MC does not support");
+#endif
+    }
   }
 
   return TRUE;
@@ -441,6 +504,9 @@ gst_omx_video_enc_set_property (GObject * object, guint prop_id,
     case PROP_QUANT_B_FRAMES:
       self->quant_b_frames = g_value_get_uint (value);
       break;
+    case PROP_SCAN_TYPE:
+      self->scan_type = g_value_get_enum (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -468,6 +534,9 @@ gst_omx_video_enc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_QUANT_B_FRAMES:
       g_value_set_uint (value, self->quant_b_frames);
+      break;
+    case PROP_SCAN_TYPE:
+      g_value_set_enum (value, self->scan_type);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
