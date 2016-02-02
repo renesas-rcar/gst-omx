@@ -31,11 +31,6 @@
 #include <gst/video/gstvideopool.h>
 
 #include "gstomx.h"
-#ifdef HAVE_MMNGRBUF
-#include "gst/allocators/gstdmabuf.h"
-#include "mmngr_buf_user_public.h"
-#endif
-#include "OMXR_Extension_vdcmn.h"
 
 G_BEGIN_DECLS
 

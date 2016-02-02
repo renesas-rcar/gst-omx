@@ -28,6 +28,13 @@
 #include "gstomxbufferpool.h"
 #include "gstomxvideodec.h"
 #include "gstomxvideoenc.h"
+#include "gst/allocators/gstdmabuf.h"
+#ifdef HAVE_MMNGRBUF
+#include "mmngr_buf_user_public.h"
+#endif
+#ifdef HAVE_VIDEODEC_EXT
+#include "OMXR_Extension_vdcmn.h"
+#endif
 #include <unistd.h>             /* getpagesize() */
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_buffer_pool_debug_category);
@@ -341,7 +348,7 @@ wrong_video_caps:
   }
 }
 
-#ifdef HAVE_MMNGRBUF
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEODEC_EXT)
 static gboolean
 gst_omx_buffer_pool_export_dmabuf (GstOMXBufferPool * pool,
     guint phys_addr, gint size, gint boundary, gint * id_export,
@@ -579,7 +586,7 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
 
     if (GST_IS_OMX_VIDEO_DEC (pool->element) &&
         GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf == TRUE) {
-#ifdef HAVE_MMNGRBUF
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEODEC_EXT)
       if (pool->allocator)
         gst_object_unref (pool->allocator);
       pool->allocator = gst_dmabuf_allocator_new ();
@@ -591,7 +598,7 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
       }
 #else
       GST_ELEMENT_ERROR (pool->element, STREAM, FAILED, (NULL),
-          ("Do not have MMNGR_BUF, can not use dmabuf mode"));
+          ("dmabuf mode is invalid now due to not have MMNGR_BUF or MC does not support getting physical address"));
       return GST_FLOW_ERROR;
 #endif
     } else {
