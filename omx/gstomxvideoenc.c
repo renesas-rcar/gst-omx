@@ -817,14 +817,17 @@ gst_omx_video_enc_loop (GstOMXVideoEnc * self)
       (guint) buf->omx_buf->nFlags, (guint64) buf->omx_buf->nTimeStamp);
 
   GST_VIDEO_ENCODER_STREAM_LOCK (self);
-  frame = gst_omx_video_find_nearest_frame (buf,
-      gst_video_encoder_get_frames (GST_VIDEO_ENCODER (self)));
+  if (buf->omx_buf->nFilledLen > 0) {
+    frame = gst_omx_video_find_nearest_frame (buf,
+        gst_video_encoder_get_frames (GST_VIDEO_ENCODER (self)));
 
-  g_assert (klass->handle_output_frame);
-  flow_ret = klass->handle_output_frame (self, self->enc_out_port, buf, frame);
+    g_assert (klass->handle_output_frame);
+    flow_ret =
+        klass->handle_output_frame (self, self->enc_out_port, buf, frame);
 
-  GST_DEBUG_OBJECT (self, "Finished frame: %s", gst_flow_get_name (flow_ret));
+    GST_DEBUG_OBJECT (self, "Finished frame: %s", gst_flow_get_name (flow_ret));
 
+  }
   err = gst_omx_port_release_buffer (port, buf);
   if (err != OMX_ErrorNone)
     goto release_error;
