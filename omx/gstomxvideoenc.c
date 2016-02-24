@@ -1620,6 +1620,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
       GstBufferPoolAcquireParams params = { 0, };
       GstMapInfo in_info;
       gint ret;
+      gint count = 0;
       GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (self->in_port_pool);
 
       /* Compare input buffer with buffer got from port to get target data for
@@ -1642,7 +1643,14 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
             }
             if (buf->omx_buf->pBuffer != in_info.data)
               gst_omx_port_release_buffer (port, buf);
-          } while (buf->omx_buf->pBuffer != in_info.data);
+            count += 1;
+          } while (buf->omx_buf->pBuffer != in_info.data
+              && count < port->port_def.nBufferCountActual * 3);
+        }
+        if (count == port->port_def.nBufferCountActual * 3) {
+          GST_ERROR_OBJECT (self,
+              "Can not get target OMXBuffer after 3 times searching");
+          goto flow_error;
         }
         buf->omx_buf->nFilledLen = in_info.size;
         gst_buffer_unmap (frame->input_buffer, &in_info);

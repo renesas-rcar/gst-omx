@@ -703,7 +703,12 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
     if (GST_IS_OMX_VIDEO_ENC (pool->element)) {
       GstBuffer *buf;
       GstOMXBuffer *omx_buf;
+      gint count = 0;
 
+      /* Search on number of OMXBuffer of port to find available GstBuffer
+       * (emptied OMXBuffer) to propose to upstream. If after 3 times searching,
+       * can not find target GstBuffer, return flow error
+       */
       do {
         buf = g_ptr_array_index (pool->buffers, pool->enc_buffer_index);
         g_return_val_if_fail (buf != NULL, GST_FLOW_ERROR);
@@ -715,10 +720,18 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
         if (pool->enc_buffer_index == pool->port->port_def.nBufferCountActual)
           pool->enc_buffer_index = 0;
 
-      } while (omx_buf->used == TRUE && omx_buf->omx_buf->nFilledLen != 0);
-      *buffer = buf;
-      ret = GST_FLOW_OK;
+        count += 1;
+      } while (omx_buf->used == TRUE &&
+          count < pool->port->port_def.nBufferCountActual * 3);
 
+      if (count == pool->port->port_def.nBufferCountActual * 3) {
+        ret = GST_FLOW_ERROR;
+        GST_ERROR_OBJECT (pool,
+            "Can not acquire buffer after 3 times searching");
+      } else {
+        *buffer = buf;
+        ret = GST_FLOW_OK;
+      }
     } else {
       /* Acquire any buffer that is available to be filled by upstream */
       ret =
