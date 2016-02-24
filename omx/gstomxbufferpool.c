@@ -27,6 +27,7 @@
 
 #include "gstomxbufferpool.h"
 #include "gstomxvideodec.h"
+#include "gstomxvideoenc.h"
 #include <unistd.h>             /* getpagesize() */
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_buffer_pool_debug_category);
@@ -576,7 +577,8 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
         break;
     }
 
-    if (GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf) {
+    if (GST_IS_OMX_VIDEO_DEC (pool->element) &&
+        GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf == TRUE) {
 #ifdef HAVE_MMNGRBUF
       if (pool->allocator)
         gst_object_unref (pool->allocator);
@@ -593,7 +595,14 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
       return GST_FLOW_ERROR;
 #endif
     } else {
-      mem = gst_omx_memory_allocator_alloc (pool->allocator, 0, omx_buf);
+      if (GST_IS_OMX_VIDEO_ENC (pool->element) &&
+          pool->port->port_def.eDir == OMX_DirInput)
+        /* Propose actual area of encoder to upstream */
+        mem = gst_memory_new_wrapped (0, omx_buf->omx_buf->pBuffer,
+            omx_buf->omx_buf->nAllocLen, 0, 0, NULL, NULL);
+      else
+        mem = gst_omx_memory_allocator_alloc (pool->allocator, 0, omx_buf);
+
       buf = gst_buffer_new ();
       gst_buffer_append_memory (buf, mem);
       g_ptr_array_add (pool->buffers, buf);
@@ -691,10 +700,32 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
       mem->offset = ((GstOMXMemory *) mem)->buf->omx_buf->nOffset;
     }
   } else {
-    /* Acquire any buffer that is available to be filled by upstream */
-    ret =
-        GST_BUFFER_POOL_CLASS (gst_omx_buffer_pool_parent_class)->acquire_buffer
-        (bpool, buffer, params);
+    if (GST_IS_OMX_VIDEO_ENC (pool->element)) {
+      GstBuffer *buf;
+      GstOMXBuffer *omx_buf;
+
+      do {
+        buf = g_ptr_array_index (pool->buffers, pool->enc_buffer_index);
+        g_return_val_if_fail (buf != NULL, GST_FLOW_ERROR);
+
+        omx_buf =
+            gst_mini_object_get_qdata (GST_MINI_OBJECT_CAST (buf),
+            gst_omx_buffer_data_quark);
+        pool->enc_buffer_index++;
+        if (pool->enc_buffer_index == pool->port->port_def.nBufferCountActual)
+          pool->enc_buffer_index = 0;
+
+      } while (omx_buf->used == TRUE && omx_buf->omx_buf->nFilledLen != 0);
+      *buffer = buf;
+      ret = GST_FLOW_OK;
+
+    } else {
+      /* Acquire any buffer that is available to be filled by upstream */
+      ret =
+          GST_BUFFER_POOL_CLASS
+          (gst_omx_buffer_pool_parent_class)->acquire_buffer (bpool, buffer,
+          params);
+    }
   }
 
   return ret;
@@ -736,9 +767,11 @@ gst_omx_buffer_pool_release_buffer (GstBufferPool * bpool, GstBuffer * buffer)
        * a ref on the buffer in GstOMXBuffer until EmptyBufferDone... which
        * would ensure that the buffer is always unused when this is called.
        */
-      g_assert_not_reached ();
-      GST_BUFFER_POOL_CLASS (gst_omx_buffer_pool_parent_class)->release_buffer
-          (bpool, buffer);
+      if (GST_OMX_VIDEO_ENC (pool->element)->no_copy == FALSE) {
+        g_assert_not_reached ();
+        GST_BUFFER_POOL_CLASS (gst_omx_buffer_pool_parent_class)->release_buffer
+            (bpool, buffer);
+      }
     }
   }
 }
@@ -817,6 +850,7 @@ gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 #ifdef HAVE_MMNGRBUF
   pool->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
 #endif
+  pool->enc_buffer_index = 0;
 }
 
 GstBufferPool *

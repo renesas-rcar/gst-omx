@@ -54,6 +54,8 @@ struct _GstOMXVideoEnc
   GstOMXComponent *enc;
   GstOMXPort *enc_in_port, *enc_out_port;
 
+  GstBufferPool *in_port_pool, *out_port_pool;
+
   /* < private > */
   GstVideoCodecState *input_state;
   /* TRUE if the component is configured and saw
@@ -78,6 +80,9 @@ struct _GstOMXVideoEnc
   guint32 quant_p_frames;
   guint32 quant_b_frames;
   guint32 scan_type;
+
+  /* TRUE to propose buffers to upstream */
+  gboolean no_copy;
 
   GstFlowReturn downstream_flow_ret;
 };
