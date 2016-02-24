@@ -56,7 +56,8 @@ enum
   PROP_INLINESPSPPSHEADERS,
 #endif
   PROP_PERIODICITYOFIDRFRAMES,
-  PROP_INTERVALOFCODINGINTRAFRAMES
+  PROP_INTERVALOFCODINGINTRAFRAMES,
+  PROP_USE_INCAPS_HEADER
 };
 
 #ifdef USE_OMX_TARGET_RPI
@@ -64,6 +65,7 @@ enum
 #endif
 #define GST_OMX_H264_VIDEO_ENC_PERIODICITY_OF_IDR_FRAMES_DEFAULT    (0xffffffff)
 #define GST_OMX_H264_VIDEO_ENC_INTERVAL_OF_CODING_INTRA_FRAMES_DEFAULT (0xffffffff)
+#define GST_OMX_H264_VIDEO_ENC_USE_INCAPS_HEADER_DEFAULT      FALSE
 
 
 /* class initialization */
@@ -117,6 +119,13 @@ gst_omx_h264_enc_class_init (GstOMXH264EncClass * klass)
           GST_OMX_H264_VIDEO_ENC_INTERVAL_OF_CODING_INTRA_FRAMES_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_USE_INCAPS_HEADER,
+      g_param_spec_boolean ("use-incaps-header",
+          "Use directly header (codec data) in caps",
+          "This option support for cases connect directly omxh264enc and omxh264dec",
+          GST_OMX_H264_VIDEO_ENC_USE_INCAPS_HEADER_DEFAULT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   basevideoenc_class->flush = gst_omx_h264_enc_flush;
   basevideoenc_class->stop = gst_omx_h264_enc_stop;
@@ -153,6 +162,9 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
     case PROP_INTERVALOFCODINGINTRAFRAMES:
       self->interval_intraframes = g_value_get_uint (value);
       break;
+    case PROP_USE_INCAPS_HEADER:
+      self->use_incaps_header = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -177,6 +189,9 @@ gst_omx_h264_enc_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_INTERVALOFCODINGINTRAFRAMES:
       g_value_set_uint (value, self->interval_intraframes);
       break;
+    case PROP_USE_INCAPS_HEADER:
+      g_value_set_boolean (value, self->use_incaps_header);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -194,6 +209,7 @@ gst_omx_h264_enc_init (GstOMXH264Enc * self)
       GST_OMX_H264_VIDEO_ENC_PERIODICITY_OF_IDR_FRAMES_DEFAULT;
   self->interval_intraframes =
       GST_OMX_H264_VIDEO_ENC_INTERVAL_OF_CODING_INTRA_FRAMES_DEFAULT;
+  self->use_incaps_header = GST_OMX_H264_VIDEO_ENC_USE_INCAPS_HEADER_DEFAULT;
 }
 
 static gboolean
@@ -557,38 +573,41 @@ gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc * enc, GstOMXPort * port,
 {
   GstOMXH264Enc *self = GST_OMX_H264_ENC (enc);
 
-  if (buf->omx_buf->nFlags & OMX_BUFFERFLAG_CODECCONFIG) {
-    /* The codec data is SPS/PPS with a startcode => bytestream stream format
-     * For bytestream stream format the SPS/PPS is only in-stream and not
-     * in the caps!
-     */
-    if (buf->omx_buf->nFilledLen >= 4 &&
-        GST_READ_UINT32_BE (buf->omx_buf->pBuffer +
-            buf->omx_buf->nOffset) == 0x00000001) {
-      GstBuffer *hdrs;
-      GstMapInfo map = GST_MAP_INFO_INIT;
+  if (!self->use_incaps_header) {
+    if (buf->omx_buf->nFlags & OMX_BUFFERFLAG_CODECCONFIG) {
+      /* The codec data is SPS/PPS with a startcode => bytestream stream format
+       * For bytestream stream format the SPS/PPS is only in-stream and not
+       * in the caps!
+       */
+      if (buf->omx_buf->nFilledLen >= 4 &&
+          GST_READ_UINT32_BE (buf->omx_buf->pBuffer +
+              buf->omx_buf->nOffset) == 0x00000001) {
+        GstBuffer *hdrs;
+        GstMapInfo map = GST_MAP_INFO_INIT;
 
-      GST_DEBUG_OBJECT (self, "got codecconfig in byte-stream format");
+        GST_DEBUG_OBJECT (self, "got codecconfig in byte-stream format");
 
-      hdrs = gst_buffer_new_and_alloc (buf->omx_buf->nFilledLen);
+        hdrs = gst_buffer_new_and_alloc (buf->omx_buf->nFilledLen);
 
-      gst_buffer_map (hdrs, &map, GST_MAP_WRITE);
-      memcpy (map.data,
-          buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
-          buf->omx_buf->nFilledLen);
-      gst_buffer_unmap (hdrs, &map);
-      self->headers = g_list_append (self->headers, hdrs);
+        gst_buffer_map (hdrs, &map, GST_MAP_WRITE);
+        memcpy (map.data,
+            buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
+            buf->omx_buf->nFilledLen);
+        gst_buffer_unmap (hdrs, &map);
+        self->headers = g_list_append (self->headers, hdrs);
 
-      if (frame)
-        gst_video_codec_frame_unref (frame);
+        if (frame)
+          gst_video_codec_frame_unref (frame);
 
-      return GST_FLOW_OK;
+        return GST_FLOW_OK;
+      }
+    } else if (self->headers) {
+      gst_video_encoder_set_headers (GST_VIDEO_ENCODER (self), self->headers);
+      self->headers = NULL;
     }
-  } else if (self->headers) {
-    gst_video_encoder_set_headers (GST_VIDEO_ENCODER (self), self->headers);
-    self->headers = NULL;
+  } else {
+    GST_DEBUG_OBJECT (self, "Send codec data (SPS/PPS) through caps directly ");
   }
-
   return
       GST_OMX_VIDEO_ENC_CLASS
       (gst_omx_h264_enc_parent_class)->handle_output_frame (enc, port, buf,
