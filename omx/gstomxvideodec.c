@@ -53,6 +53,9 @@
 #include "gstomxvideo.h"
 #include "gstomxvideodec.h"
 #include "gstomxwmvdec.h"
+#ifdef HAVE_VIDEODEC_EXT
+#include "OMXR_Extension_vdcmn.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_dec_debug_category
@@ -2038,7 +2041,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
       return FALSE;
     }
   }
-
+#ifdef HAVE_VIDEODEC_EXT
   {
     /* Setting reorder mode (output port only) */
     OMXR_MC_VIDEO_PARAM_REORDERTYPE sReorder;
@@ -2053,6 +2056,11 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     gst_omx_component_set_parameter (self->dec, OMXR_MC_IndexParamVideoReorder,
         &sReorder);
   }
+#else
+  if (self->no_reorder != FALSE)
+    GST_ERROR_OBJECT (self,
+        "no-reorder mode is invalid now due to MC does not support");
+#endif
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
   if (gst_omx_port_update_port_definition (self->dec_out_port,
