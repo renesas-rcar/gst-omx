@@ -91,7 +91,6 @@ static void gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
 static void gst_omx_video_dec_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec);
-static void GstOMXBufCallbackfunc (struct GstOMXBufferCallback *release);
 
 enum
 {
