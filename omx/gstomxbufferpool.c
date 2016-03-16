@@ -585,7 +585,8 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     }
 
     if (GST_IS_OMX_VIDEO_DEC (pool->element) &&
-        GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf == TRUE) {
+        GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf == TRUE &&
+        (omx_buf->omx_buf->pOutputPortPrivate)) {
 #if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEODEC_EXT)
       if (pool->allocator)
         gst_object_unref (pool->allocator);
