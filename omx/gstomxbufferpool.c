@@ -351,17 +351,13 @@ wrong_video_caps:
 #if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEODEC_EXT)
 static gboolean
 gst_omx_buffer_pool_export_dmabuf (GstOMXBufferPool * pool,
-    guint phys_addr, gint size, gint boundary, gint * id_export,
-    gint * dmabuf_fd)
+    guint phys_addr, gint size, gint * id_export, gint * dmabuf_fd)
 {
   gint res;
-  gint tmpsize;
-
-  tmpsize = (size + boundary - 1) & ~(boundary - 1);
 
   res =
       mmngr_export_start_in_user_ext (id_export,
-      (gsize) tmpsize, phys_addr, dmabuf_fd, NULL);
+      (gsize) size, phys_addr, dmabuf_fd, NULL);
   if (res != R_MM_OK) {
     GST_ERROR_OBJECT (pool,
         "mmngr_export_start_in_user failed (phys_addr:0x%08x)", phys_addr);
@@ -374,66 +370,6 @@ gst_omx_buffer_pool_export_dmabuf (GstOMXBufferPool * pool,
   return TRUE;
 }
 
-static GstBuffer *
-gst_omx_buffer_pool_request_videosink_buffer_creation (GstOMXBufferPool * pool,
-    gint * dmabuf_fd, gint * stride)
-{
-  GstQuery *query;
-  GValue val = { 0, };
-  GstStructure *structure;
-  const GValue *value;
-  GstBuffer *buffer;
-  GArray *dmabuf_array;
-  GArray *stride_array;
-  gint n_planes;
-  gint i;
-
-  g_value_init (&val, G_TYPE_POINTER);
-  g_value_set_pointer (&val, (gpointer) pool->allocator);
-
-  dmabuf_array = g_array_new (FALSE, FALSE, sizeof (gint));
-  stride_array = g_array_new (FALSE, FALSE, sizeof (gint));
-
-  n_planes = GST_VIDEO_INFO_N_PLANES (&pool->video_info);
-  for (i = 0; i < n_planes; i++) {
-    g_array_append_val (dmabuf_array, *(dmabuf_fd + i));
-    g_array_append_val (stride_array, *(stride + i));
-  }
-
-  structure = gst_structure_new ("videosink_buffer_creation_request",
-      "width", G_TYPE_INT, pool->port->port_def.format.video.nFrameWidth,
-      "height", G_TYPE_INT, pool->port->port_def.format.video.nFrameHeight,
-      "stride", G_TYPE_ARRAY, stride_array,
-      "dmabuf", G_TYPE_ARRAY, dmabuf_array,
-      "allocator", G_TYPE_POINTER, &val,
-      "format", G_TYPE_STRING,
-      gst_video_format_to_string (pool->video_info.finfo->format),
-      "n_planes", G_TYPE_INT, n_planes, NULL);
-
-  query = gst_query_new_custom (GST_QUERY_CUSTOM, structure);
-
-  GST_DEBUG_OBJECT (pool, "send a videosink_buffer_creation_request query");
-
-  if (!gst_pad_peer_query (GST_VIDEO_DECODER_SRC_PAD (pool->element), query)) {
-    GST_ERROR_OBJECT (pool, "videosink_buffer_creation_request query failed");
-    return NULL;
-  }
-
-  value = gst_structure_get_value (structure, "buffer");
-  buffer = gst_value_get_buffer (value);
-  if (buffer == NULL) {
-    GST_ERROR_OBJECT (pool,
-        "could not get a buffer from videosink_buffer_creation query");
-    return NULL;
-  }
-
-  gst_query_unref (query);
-  g_array_free (dmabuf_array, TRUE);
-  g_array_free (stride_array, TRUE);
-
-  return buffer;
-}
-
 /* This function will create a GstBuffer contain dmabuf_fd of decoded
  * video got from Media Component
  */
@@ -443,10 +379,15 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
 {
   gint dmabuf_fd[GST_VIDEO_MAX_PLANES];
   gint plane_size[GST_VIDEO_MAX_PLANES];
+  gint plane_size_ext[GST_VIDEO_MAX_PLANES];
   gint dmabuf_id[GST_VIDEO_MAX_PLANES];
+  gint page_offset[GST_VIDEO_MAX_PLANES];
   GstBuffer *new_buf;
   gint i;
   gint page_size;
+
+  new_buf = gst_buffer_new ();
+  page_size = getpagesize ();
 
   GST_DEBUG_OBJECT (self, "Create dmabuf mem pBuffer=%p",
       omx_buf->omx_buf->pBuffer);
@@ -454,54 +395,47 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
   for (i = 0; i < GST_VIDEO_INFO_N_PLANES (&self->video_info); i++) {
     gint res;
     guint phys_addr;
+    GstMemory *mem;
+
     OMXR_MC_VIDEO_DECODERESULTTYPE *decode_res =
         (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->omx_buf->pOutputPortPrivate;
 
     phys_addr = (guint) decode_res->pvPhysImageAddressY + offset[i];
+    /* Calculate offset between physical address and page boundary */
+    page_offset[i] = phys_addr & (page_size - 1);
+
     plane_size[i] = stride[i] *
         GST_VIDEO_INFO_COMP_HEIGHT (&self->video_info, i);
-    page_size = getpagesize ();
-    if (i != 0) {
-      if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
-              plane_size[i], page_size, &dmabuf_id[i], &dmabuf_fd[i])) {
-        GST_ERROR_OBJECT (self, "dmabuf exporting failed");
-        return GST_FLOW_ERROR;
-      }
-    } else {
-      /* Export a dmabuf file descriptor from the head of Y plane to
-       * the end of the buffer so that mapping the whole plane as
-       * contiguous memory is available. */
-      if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
-              self->port->port_def.nBufferSize, page_size,
-              &dmabuf_id[0], &dmabuf_fd[0])) {
-        GST_ERROR_OBJECT (self, "dmabuf exporting failed");
-        return GST_FLOW_ERROR;
-      }
-    }
-    g_array_append_val (self->id_array, dmabuf_id[i]);
-  }
-  if (self->vsink_buf_req_supported) {
-    new_buf =
-        gst_omx_buffer_pool_request_videosink_buffer_creation (self, &dmabuf_fd,
-        stride);
-    if (!new_buf) {
-      GST_ERROR_OBJECT (self, "Can not query gstBuffer contain dma_fd");
+
+    /* When downstream plugins do mapping from dmabuf fd it requires
+     * mapping from boundary page and size align for page size so
+     * memory for plane must increase to handle for this case */
+    plane_size_ext[i] = GST_ROUND_UP_N (plane_size[i] + page_offset[i],
+        page_size);
+
+    if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
+            plane_size_ext[i], &dmabuf_id[i], &dmabuf_fd[i])) {
+      GST_ERROR_OBJECT (self, "dmabuf exporting failed");
       return GST_FLOW_ERROR;
     }
-    g_ptr_array_add (self->buffers, new_buf);
-  } else {
-    new_buf = gst_buffer_new ();
-    for (i = 0; i < GST_VIDEO_INFO_N_PLANES (&self->video_info); i++)
-      gst_buffer_append_memory (new_buf,
-          gst_dmabuf_allocator_alloc (self->allocator, dmabuf_fd[i],
-              plane_size[i]));
-    g_ptr_array_add (self->buffers, new_buf);
-    gst_buffer_add_video_meta_full (new_buf, GST_VIDEO_FRAME_FLAG_NONE,
-        GST_VIDEO_INFO_FORMAT (&self->video_info),
-        GST_VIDEO_INFO_WIDTH (&self->video_info),
-        GST_VIDEO_INFO_HEIGHT (&self->video_info),
-        GST_VIDEO_INFO_N_PLANES (&self->video_info), offset, stride);
+
+    g_array_append_val (self->id_array, dmabuf_id[i]);
+    /* Set offset's information */
+    mem = gst_dmabuf_allocator_alloc (self->allocator, dmabuf_fd[i],
+        plane_size_ext[i]);
+    mem->offset = page_offset[i];
+    mem->size = plane_size[i];
+    gst_buffer_append_memory (new_buf, mem);
+
   }
+
+  g_ptr_array_add (self->buffers, new_buf);
+  gst_buffer_add_video_meta_full (new_buf, GST_VIDEO_FRAME_FLAG_NONE,
+      GST_VIDEO_INFO_FORMAT (&self->video_info),
+      GST_VIDEO_INFO_WIDTH (&self->video_info),
+      GST_VIDEO_INFO_HEIGHT (&self->video_info),
+      GST_VIDEO_INFO_N_PLANES (&self->video_info), offset, stride);
+
   return new_buf;
 }
 #endif
