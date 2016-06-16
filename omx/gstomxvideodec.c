@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2015, Renesas Electronics Corporation
+ * Copyright (C) 2015-2016, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -56,6 +56,7 @@
 #ifdef HAVE_VIDEODEC_EXT
 #include "OMXR_Extension_vdcmn.h"
 #endif
+#include <unistd.h>             /* getpagesize() */
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_dec_debug_category
@@ -1363,10 +1364,74 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
     }
 
     if (acq_return == GST_OMX_ACQUIRE_BUFFER_RECONFIGURE) {
-      /* We have the possibility to reconfigure everything now */
-      err = gst_omx_video_dec_reconfigure_output_port (self);
+#ifdef USE_OMX_TARGET_RCAR
+      gboolean was_enabled = TRUE;
+      if (!gst_omx_port_is_enabled (port)) {
+        guint plane_size;
+        gint page_size = getpagesize ();
+
+        /* Reconfigure port def to make output allocation align for pagesize */
+        gst_omx_port_get_port_definition (port, &port_def);
+        GST_DEBUG_OBJECT (self, "nStridexnSliceHeight = %dx%d",
+            port_def.format.video.nStride, port_def.format.video.nSliceHeight);
+        plane_size =
+            port_def.format.video.nStride * port_def.format.video.nSliceHeight;
+        if (plane_size % page_size) {
+          if (port_def.format.video.nStride % 64)
+            port_def.format.video.nStride =
+                GST_ROUND_UP_64 (port_def.format.video.nStride);
+          if (port_def.format.video.nSliceHeight % 64)
+            port_def.format.video.nSliceHeight =
+                GST_ROUND_UP_64 (port_def.format.video.nSliceHeight);
+
+          err = gst_omx_port_update_port_definition (self->dec_out_port,
+              &port_def);
+          if (err != OMX_ErrorNone)
+            goto reconfigure_error;
+          GST_DEBUG_OBJECT (self,
+              "After reconfigure nStridexnSliceHeight = %dx%d",
+              port->port_def.format.video.nStride,
+              port->port_def.format.video.nSliceHeight);
+        }
+
+        err = gst_omx_port_set_enabled (port, TRUE);
+        if (err != OMX_ErrorNone)
+          goto reconfigure_error;
+        was_enabled = FALSE;
+      }
+
+      /* Re-allocate output buffer */
+      err = gst_omx_port_allocate_buffers (port);
       if (err != OMX_ErrorNone)
         goto reconfigure_error;
+
+      if (!was_enabled) {
+        err = gst_omx_port_wait_enabled (port, 2 * GST_SECOND);
+        if (err != OMX_ErrorNone)
+          goto reconfigure_error;
+      }
+      err = gst_omx_port_populate (port);
+      if (err != OMX_ErrorNone)
+        goto reconfigure_error;
+
+      err = gst_omx_port_mark_reconfigured (port);
+      if (err != OMX_ErrorNone)
+        goto reconfigure_error;
+      if (self->use_dmabuf == TRUE || self->no_copy == TRUE) {
+        /* Re-create new out_port_pool. The old one has been freed when
+         * deallocate output buffers */
+        self->out_port_pool =
+            gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->dec, port);
+      } else if (self->no_copy == FALSE) {
+        GST_DEBUG_OBJECT (self, "Copy mode does not use out_port_pool");
+      } else
+#endif
+      {
+        /* We have the possibility to reconfigure everything now */
+        err = gst_omx_video_dec_reconfigure_output_port (self);
+        if (err != OMX_ErrorNone)
+          goto reconfigure_error;
+      }
     } else {
       /* Just update caps */
       GST_VIDEO_DECODER_STREAM_LOCK (self);
@@ -1431,6 +1496,8 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
   }
 
   g_assert (acq_return == GST_OMX_ACQUIRE_BUFFER_OK);
+  GST_DEBUG_OBJECT (self, "Size of output port buffer: 0x%08x",
+      buf->omx_buf->nAllocLen);
 
   /* This prevents a deadlock between the srcpad stream
    * lock and the videocodec stream lock, if ::reset()
@@ -2090,6 +2157,20 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
 #endif
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
+#ifdef USE_OMX_TARGET_RCAR
+  {
+    OMX_PARAM_PORTDEFINITIONTYPE out_port_def;
+
+    /* Initialize default output allocation align for page size */
+    gst_omx_port_get_port_definition (self->dec_out_port, &out_port_def);
+    out_port_def.format.video.nStride = 128;
+    out_port_def.format.video.nSliceHeight = 128;
+    if (gst_omx_port_update_port_definition (self->dec_out_port,
+            &out_port_def) != OMX_ErrorNone)
+      return FALSE;
+  }
+  /* To make source code flexible, accept getting port_def param again */
+#endif
   if (gst_omx_port_update_port_definition (self->dec_out_port,
           NULL) != OMX_ErrorNone)
     return FALSE;
