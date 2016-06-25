@@ -801,7 +801,6 @@ gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 {
   pool->buffers = g_ptr_array_new ();
   pool->allocator = g_object_new (gst_omx_memory_allocator_get_type (), NULL);
-  pool->vsink_buf_req_supported = FALSE;
 #ifdef HAVE_MMNGRBUF
   pool->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
 #endif

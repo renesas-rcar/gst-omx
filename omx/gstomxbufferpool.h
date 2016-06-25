@@ -82,10 +82,6 @@ struct _GstOMXBufferPool
 
   /* Used during acquire for input port */
   gint enc_buffer_index;
-
-  /* TRUE if the downstream buffer pool can handle
-   * "videosink_buffer_creation_request" query */
-  gboolean vsink_buf_req_supported;
 #ifdef HAVE_MMNGRBUF
   /* Array use to contain dma_id. It is used in export_end dmabuf area */
   GArray *id_array;
