@@ -566,10 +566,12 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
       data = src;
       for (h = 0; h < dst_height[p]; h++) {
         memcpy (dst, data, dst_width[p]);
-        dst += GST_VIDEO_INFO_PLANE_STRIDE (vinfo, p);
+        dst += GST_VIDEO_FRAME_PLANE_STRIDE (&frame, p);
         data += src_stride[p];
       }
       src += src_size[p];
+      GST_DEBUG_OBJECT (self, "Finished copying plane with stride = %d",
+          GST_VIDEO_FRAME_PLANE_STRIDE (&frame, p));
     }
 
     gst_video_frame_unmap (&frame);
