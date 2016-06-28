@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
- * Copyright (C) 2015, Renesas Electronics Corporation
+ * Copyright (C) 2015-2016, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -45,6 +45,7 @@ G_BEGIN_DECLS
 
 typedef struct _GstOMXVideoEnc GstOMXVideoEnc;
 typedef struct _GstOMXVideoEncClass GstOMXVideoEncClass;
+typedef struct _GstOMXVideoEncPrivate GstOMXVideoEncPrivate;
 
 struct _GstOMXVideoEnc
 {
@@ -83,6 +84,9 @@ struct _GstOMXVideoEnc
 
   /* TRUE to propose buffers to upstream */
   gboolean no_copy;
+  /* TRUE to receive dmabuf fd from upstream */
+  gboolean use_dmabuf;
+  GstOMXVideoEncPrivate *priv;
 
   GstFlowReturn downstream_flow_ret;
 };
