@@ -98,8 +98,6 @@ gst_omx_wma_dec_set_format (GstOMXAudioDec * dec, GstOMXPort * port,
   gint wmaversion, block_align, bitrate, rate, channels;
   const GValue *codec_data;
   GstBuffer *buf;
-  guint16 wEncodeOptions;
-  guint32 dwSuperBlockAlign;
   GstMapInfo info;
 
   gst_omx_port_get_port_definition (port, &port_def);
@@ -137,6 +135,13 @@ gst_omx_wma_dec_set_format (GstOMXAudioDec * dec, GstOMXPort * port,
     return FALSE;
   }
 
+  wma_param.nChannels = channels;
+  wma_param.nBitRate = bitrate;
+  /* wma_param.eFormat not supported */
+  /* wma_param.eProfile not supported */
+  wma_param.nSamplingRate = rate;
+  wma_param.nBlockAlign = block_align;
+
   codec_data = gst_structure_get_value (s, "codec_data");
   if (codec_data) {
     buf = gst_value_get_buffer (codec_data);
@@ -144,24 +149,19 @@ gst_omx_wma_dec_set_format (GstOMXAudioDec * dec, GstOMXPort * port,
     if (info.size >= 10) {
       guint *puint32data;
       guint16 *puint16data;
+      guint16 wEncodeOptions;
+      guint32 dwSuperBlockAlign;
 
       puint16data = (guint16 *) (info.data + 4);
       wEncodeOptions = *puint16data;
 
       puint32data = (guint *) (info.data + 6);
       dwSuperBlockAlign = *puint32data;
+      wma_param.nEncodeOptions = wEncodeOptions;
+      wma_param.nSuperBlockAlign = dwSuperBlockAlign;
     }
     gst_buffer_unmap (buf, &info);
   }
-
-  wma_param.nChannels = channels;
-  wma_param.nBitRate = bitrate;
-  /* wma_param.eFormat not supported */
-  /* wma_param.eProfile not supported */
-  wma_param.nSamplingRate = rate;
-  wma_param.nBlockAlign = block_align;
-  wma_param.nEncodeOptions = wEncodeOptions;
-  wma_param.nSuperBlockAlign = dwSuperBlockAlign;
 
   err =
       gst_omx_component_set_parameter (dec->dec, OMX_IndexParamAudioWma,
