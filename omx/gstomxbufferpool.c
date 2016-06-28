@@ -393,14 +393,13 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
       omx_buf->omx_buf->pBuffer);
 
   for (i = 0; i < GST_VIDEO_INFO_N_PLANES (&self->video_info); i++) {
-    gint res;
     guint phys_addr;
     GstMemory *mem;
 
     OMXR_MC_VIDEO_DECODERESULTTYPE *decode_res =
         (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->omx_buf->pOutputPortPrivate;
 
-    phys_addr = (guint) decode_res->pvPhysImageAddressY + offset[i];
+    phys_addr = (guintptr) decode_res->pvPhysImageAddressY + offset[i];
     /* Calculate offset between physical address and page boundary */
     page_offset[i] = phys_addr & (page_size - 1);
 
@@ -416,7 +415,7 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
     if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
             plane_size_ext[i], &dmabuf_id[i], &dmabuf_fd[i])) {
       GST_ERROR_OBJECT (self, "dmabuf exporting failed");
-      return GST_FLOW_ERROR;
+      return NULL;
     }
 
     g_array_append_val (self->id_array, dmabuf_id[i]);
@@ -526,7 +525,7 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
         gst_object_unref (pool->allocator);
       pool->allocator = gst_dmabuf_allocator_new ();
       buf = gst_omx_buffer_pool_create_buffer_contain_dmabuf (pool,
-          omx_buf, &stride, &offset);
+          omx_buf, (gint *) (&stride), (gsize *) (&offset));
       if (!buf) {
         GST_ERROR_OBJECT (pool, "Can not create buffer contain dmabuf");
         return GST_FLOW_ERROR;
