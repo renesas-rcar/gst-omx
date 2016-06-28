@@ -433,11 +433,12 @@ gst_omx_video_enc_open (GstVideoEncoder * encoder)
       }
     }
     if (self->scan_type != 0xffffffff) {
-      GST_DEBUG_OBJECT (self, "Setting memory alloc type parameter");
 #if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
       OMXR_MC_VIDEO_PARAM_PICTURE_MEMORY_ALLOCTYPE alloctype_param;
       GST_OMX_INIT_STRUCT (&alloctype_param);
       alloctype_param.nPortIndex = self->enc_out_port->index;
+
+      GST_DEBUG_OBJECT (self, "Setting memory alloc type parameter");
 
       err = gst_omx_component_get_parameter (self->enc,
           OMXR_MC_IndexParamVideoPictureMemoryAlloc, &alloctype_param);
@@ -1183,6 +1184,8 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
           case OMX_COLOR_FormatYUV420SemiPlanar:
             port_def.format.video.nStride = GST_ROUND_UP_32 (info->width);
             break;
+          default:
+            break;
         }
       } else
         port_def.format.video.nStride = GST_ROUND_UP_4 (info->width);   /* safe (?) default */
@@ -1841,9 +1844,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
     }
 
     if (self->in_port_pool) {
-      GstBufferPoolAcquireParams params = { 0, };
       GstMapInfo in_info;
-      gint ret;
       gint count = 0;
       GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (self->in_port_pool);
 
@@ -2107,8 +2108,7 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
     GstVideoInfo info;
     guint size;
     OMX_PARAM_PORTDEFINITIONTYPE port_def;
-    gint max, min;
-    gboolean ret;
+    guint max, min;
 
     gst_omx_port_get_port_definition (self->enc_in_port, &port_def);
 
@@ -2148,6 +2148,8 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
           break;
         case OMX_COLOR_FormatYUV420SemiPlanar:
           port_def.format.video.nStride = GST_ROUND_UP_32 (info.width);
+          break;
+        default:
           break;
       }
     } else
