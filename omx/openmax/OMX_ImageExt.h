@@ -21,41 +21,35 @@
  *
  */
 
-/** OMX_ComponentExt.h - OpenMax IL version 1.1.2
- * The OMX_ComponentExt header file contains extensions to the definitions used
- * by both the application and the component to access common items.
+/** OMX_ImageExt.h - OpenMax IL version 1.1.2
+ * The OMX_ImageExt header file contains extensions to the
+ * definitions used by both the application and the component to
+ * access image items.
  */
 
-#ifndef OMX_ComponentExt_h
-#define OMX_ComponentExt_h
+#ifndef OMX_ImageExt_h
+#define OMX_ImageExt_h
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-/* Each OMX header must include all required header files to allow the
+/* Each OMX header shall include all required header files to allow the
  * header to compile without errors.  The includes below are required
- * for this header file to compile successfully 
+ * for this header file to compile successfully
  */
-#include <OMX_Types.h>
+#include <OMX_Core.h>
 
-
-/** Set/query the commit mode */
-typedef struct OMX_CONFIG_COMMITMODETYPE {
-    OMX_U32 nSize;
-    OMX_VERSIONTYPE nVersion;
-    OMX_BOOL bDeferred;
-} OMX_CONFIG_COMMITMODETYPE;
-
-/** Explicit commit */
-typedef struct OMX_CONFIG_COMMITTYPE {
-    OMX_U32 nSize;
-    OMX_VERSIONTYPE nVersion;
-} OMX_CONFIG_COMMITTYPE;
+/** Enum for standard image codingtype extensions */
+typedef enum OMX_IMAGE_CODINGEXTTYPE {
+    OMX_IMAGE_CodingExtUnused = OMX_IMAGE_CodingKhronosExtensions,
+    OMX_IMAGE_CodingWEBP,         /**< WebP image format */
+} OMX_IMAGE_CODINGEXTTYPE;
 
 
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
-#endif /* OMX_ComponentExt_h */
+#endif /* OMX_ImageExt_h */
+/* File EOF */
