@@ -1881,16 +1881,17 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
         gst_buffer_unmap (frame->input_buffer, &in_info);
       }
     } else if (self->use_dmabuf) {
+#ifdef HAVE_VIDEOR_EXT
+      OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *ext_addr;
+      ext_addr = (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *) buf->omx_buf->pBuffer;
       if (self->priv->full_fd == FALSE) {
-        OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *ext_addr;
-        ext_addr = (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *) buf->omx_buf->pBuffer;
         if (ext_addr->u32HwipAddr[0] == 0) {
           ext_addr->u32HwipAddr[0] = phys_addr[0];
-          g_array_append_val (self->priv->addr_array, buf->omx_buf->pBuffer);
+          g_array_append_val (self->priv->addr_array, phys_addr[0]);
           GST_DEBUG_OBJECT (self,
               "Updated phys_addr = 0x%x for Y plane", phys_addr[0]);
         } else {
-          gst_omx_port_release_buffer (port, buf);
+          g_queue_push_tail (&port->pending_buffers, buf);
           acq_ret = GST_OMX_ACQUIRE_BUFFER_ERROR;
           continue;
         }
@@ -1907,16 +1908,17 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
       } else {
         /* Currently, phys_addr[0] is address of an element in
          * extaddr_array */
-        if ((guintptr) buf->omx_buf->pBuffer != phys_addr[0]) {
-          gst_omx_port_release_buffer (port, buf);
+        if (ext_addr->u32HwipAddr[0] != phys_addr[0]) {
+          g_queue_push_tail (&port->pending_buffers, buf);
           acq_ret = GST_OMX_ACQUIRE_BUFFER_ERROR;
           continue;
         }
         GST_DEBUG_OBJECT (self,
-            "Got OMXBuffer = 0x%x match with target input area 0x%x",
-            (guint) ((guintptr) buf->omx_buf->pBuffer), phys_addr[0]);
+            "Got OMXBuffer have HW address 0x%x match with target input area 0x%x",
+            ext_addr->u32HwipAddr[0], phys_addr[0]);
       }
       buf->omx_buf->nFilledLen = port->port_def.nBufferSize;
+#endif
     } else {
       /* Copy the buffer content in chunks of size as requested
        * by the port */
