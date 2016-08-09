@@ -2182,7 +2182,10 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
     if (info.fps_n == 0) {
       port_def.format.video.xFramerate = 0;
     } else {
-      port_def.format.video.xFramerate = (info.fps_n) / (info.fps_d);
+      if (!(klass->cdata.hacks & GST_OMX_HACK_VIDEO_FRAMERATE_INTEGER))
+        port_def.format.video.xFramerate = (info.fps_n << 16) / (info.fps_d);
+      else
+        port_def.format.video.xFramerate = (info.fps_n) / (info.fps_d);
     }
 
     if (gst_omx_port_update_port_definition (self->enc_in_port,
