@@ -1216,6 +1216,7 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
         g_assert_not_reached ();
     }
 
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOR_EXT)
     if (self->use_dmabuf) {
       switch (port_def.format.video.eColorFormat) {
         case OMX_COLOR_FormatYUV420Planar:
@@ -1232,7 +1233,7 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
           break;
       }
     }
-
+#endif
     if (info->fps_n == 0) {
       port_def.format.video.xFramerate = 0;
     } else {
@@ -1622,8 +1623,10 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
   GstOMXPort *port;
   GstOMXBuffer *buf;
   OMX_ERRORTYPE err;
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
   /* Physical address use to check in dmabuf mode */
   guint phys_addr[GST_VIDEO_MAX_PLANES] = { 0, };
+#endif
 
   self = GST_OMX_VIDEO_ENC (encoder);
 
