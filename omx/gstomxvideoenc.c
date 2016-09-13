@@ -1709,32 +1709,6 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
           phys_addr[i] = tmp_addr[i];
           GST_DEBUG_OBJECT (self, "Got physical address 0x%x at fd %d",
               phys_addr[i], fd[i]);
-          /* Workaround in case 1 plane of YUV420 format */
-          if (n_mem == 1) {
-            switch (port->port_def.format.video.eColorFormat) {
-              case OMX_COLOR_FormatYUV420PlanarMultiPlane:
-                phys_addr[1] =
-                    phys_addr[0] +
-                    (port->port_def.format.video.nStride *
-                    port->port_def.format.video.nSliceHeight);
-                phys_addr[2] =
-                    phys_addr[1] +
-                    ((port->port_def.format.video.nStride / 2) *
-                    (port->port_def.format.video.nSliceHeight / 2));
-                break;
-              case OMX_COLOR_FormatYUV420SemiPlanarMultiPlane:
-                phys_addr[1] =
-                    phys_addr[0] +
-                    (port->port_def.format.video.nStride *
-                    port->port_def.format.video.nSliceHeight);
-                break;
-              default:
-                GST_ERROR_OBJECT (self,
-                    "Unsupported dmabuf mode for this format");
-                gst_video_codec_frame_unref (frame);
-                return GST_FLOW_ERROR;
-            }
-          }
         }
       } else {
         GST_ERROR_OBJECT (self, "GstBuffer does not contain dmabuf memory\
