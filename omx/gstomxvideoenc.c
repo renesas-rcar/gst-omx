@@ -1691,18 +1691,18 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
               NULL);
           if (ret != R_MM_OK) {
             GST_ERROR_OBJECT (self, "Fail to import dmabuf fd");
+            gst_video_codec_frame_unref (frame);
             return GST_FLOW_ERROR;
           }
           if (i == 0)
             g_array_append_val (self->priv->fd_array, fd[i]);
           g_array_append_val (self->priv->id_array, id);
 
-          if (self->priv->fd_array->len / n_mem >
-              port->port_def.nBufferCountActual) {
+          if (self->priv->fd_array->len > port->port_def.nBufferCountActual) {
             GST_ERROR_OBJECT (self,
                 "Buffer out of guarantee of OMX MC, received %d, guarantee %d",
-                (self->priv->fd_array->len / n_mem),
-                port->port_def.nBufferCountActual);
+                self->priv->fd_array->len, port->port_def.nBufferCountActual);
+            gst_video_codec_frame_unref (frame);
             return GST_FLOW_ERROR;
           }
 
@@ -1731,6 +1731,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
               default:
                 GST_ERROR_OBJECT (self,
                     "Unsupported dmabuf mode for this format");
+                gst_video_codec_frame_unref (frame);
                 return GST_FLOW_ERROR;
             }
           }
@@ -1738,6 +1739,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
       } else {
         GST_ERROR_OBJECT (self, "GstBuffer does not contain dmabuf memory\
             Can not use dmabuf mode");
+        gst_video_codec_frame_unref (frame);
         return GST_FLOW_ERROR;
       }
     }
@@ -1867,6 +1869,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
             acq_ret = gst_omx_port_acquire_buffer (port, &buf);
             if (acq_ret != GST_OMX_ACQUIRE_BUFFER_OK) {
               GST_ERROR_OBJECT (self, "Can acquire buffer from input port");
+              gst_video_codec_frame_unref (frame);
               return GST_FLOW_ERROR;
             }
             if (buf->omx_buf->pBuffer != in_info.data)
