@@ -2107,116 +2107,125 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
     size = GST_VIDEO_INFO_SIZE (&info);
 
     if (gst_omx_component_get_state (self->enc,
-            GST_CLOCK_TIME_NONE) != OMX_StateLoaded)
-      return FALSE;
-    switch (info.finfo->format) {
-      case GST_VIDEO_FORMAT_I420:
-        port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420Planar;
-        break;
-      case GST_VIDEO_FORMAT_NV12:
-        port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420SemiPlanar;
-        break;
-      default:
-        GST_ERROR_OBJECT (self, "Unsupported format %s",
-            gst_video_format_to_string (info.finfo->format));
-        return FALSE;
-        break;
-    }
-    port_def.format.video.nFrameWidth = info.width;
-    if (klass->cdata.hacks & GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN) {
-      switch (port_def.format.video.eColorFormat) {
-        case OMX_COLOR_FormatYUV420Planar:
-          port_def.format.video.nStride = GST_ROUND_UP_64 (info.width);
+            GST_CLOCK_TIME_NONE) == OMX_StateLoaded) {
+      /* Handle for case set_format() is call after propose_allocation *
+       * It is necessary to configure for OMX at this time */
+      switch (info.finfo->format) {
+        case GST_VIDEO_FORMAT_I420:
+          port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420Planar;
           break;
-        case OMX_COLOR_FormatYUV420SemiPlanar:
-          port_def.format.video.nStride = GST_ROUND_UP_32 (info.width);
+        case GST_VIDEO_FORMAT_NV12:
+          port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420SemiPlanar;
           break;
         default:
+          GST_ERROR_OBJECT (self, "Unsupported format %s",
+              gst_video_format_to_string (info.finfo->format));
+          return FALSE;
           break;
       }
-    } else
-      port_def.format.video.nStride = GST_ROUND_UP_4 (info.width);      /* safe (?) default */
-    port_def.format.video.nFrameHeight = info.height;
-    port_def.format.video.nSliceHeight = info.height;
-    switch (port_def.format.video.eColorFormat) {
-      case OMX_COLOR_FormatYUV420Planar:
-      case OMX_COLOR_FormatYUV420PackedPlanar:
-        port_def.nBufferSize =
-            (port_def.format.video.nStride *
-            port_def.format.video.nFrameHeight) +
-            2 * ((port_def.format.video.nStride / 2) *
-            ((port_def.format.video.nFrameHeight + 1) / 2));
-        break;
+      port_def.format.video.nFrameWidth = info.width;
+      if (klass->cdata.hacks & GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN) {
+        switch (port_def.format.video.eColorFormat) {
+          case OMX_COLOR_FormatYUV420Planar:
+            port_def.format.video.nStride = GST_ROUND_UP_64 (info.width);
+            break;
+          case OMX_COLOR_FormatYUV420SemiPlanar:
+            port_def.format.video.nStride = GST_ROUND_UP_32 (info.width);
+            break;
+          default:
+            break;
+        }
+      } else
+        port_def.format.video.nStride = GST_ROUND_UP_4 (info.width);    /* safe (?) default */
+      port_def.format.video.nFrameHeight = info.height;
+      port_def.format.video.nSliceHeight = info.height;
+      switch (port_def.format.video.eColorFormat) {
+        case OMX_COLOR_FormatYUV420Planar:
+        case OMX_COLOR_FormatYUV420PackedPlanar:
+          port_def.nBufferSize =
+              (port_def.format.video.nStride *
+              port_def.format.video.nFrameHeight) +
+              2 * ((port_def.format.video.nStride / 2) *
+              ((port_def.format.video.nFrameHeight + 1) / 2));
+          break;
 
-      case OMX_COLOR_FormatYUV420SemiPlanar:
-        port_def.nBufferSize =
-            (port_def.format.video.nStride *
-            port_def.format.video.nFrameHeight) +
-            (port_def.format.video.nStride *
-            ((port_def.format.video.nFrameHeight + 1) / 2));
-        break;
+        case OMX_COLOR_FormatYUV420SemiPlanar:
+          port_def.nBufferSize =
+              (port_def.format.video.nStride *
+              port_def.format.video.nFrameHeight) +
+              (port_def.format.video.nStride *
+              ((port_def.format.video.nFrameHeight + 1) / 2));
+          break;
 
-      default:
-        g_assert_not_reached ();
-    }
-    if (info.fps_n == 0) {
-      port_def.format.video.xFramerate = 0;
-    } else {
-      if (!(klass->cdata.hacks & GST_OMX_HACK_VIDEO_FRAMERATE_INTEGER))
-        port_def.format.video.xFramerate = (info.fps_n << 16) / (info.fps_d);
-      else
-        port_def.format.video.xFramerate = (info.fps_n) / (info.fps_d);
-    }
-
-    if (gst_omx_port_update_port_definition (self->enc_in_port,
-            &port_def) != OMX_ErrorNone)
-      return FALSE;
-
-    if (klass->set_format) {
-      if (!klass->set_format (self, self->enc_in_port, self->input_state)) {
-        GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
-        return FALSE;
+        default:
+          g_assert_not_reached ();
       }
+      if (info.fps_n == 0) {
+        port_def.format.video.xFramerate = 0;
+      } else {
+        if (!(klass->cdata.hacks & GST_OMX_HACK_VIDEO_FRAMERATE_INTEGER))
+          port_def.format.video.xFramerate = (info.fps_n << 16) / (info.fps_d);
+        else
+          port_def.format.video.xFramerate = (info.fps_n) / (info.fps_d);
+      }
+
+      if (gst_omx_port_update_port_definition (self->enc_in_port,
+              &port_def) != OMX_ErrorNone)
+        return FALSE;
+
+      if (klass->set_format) {
+        if (!klass->set_format (self, self->enc_in_port, self->input_state)) {
+          GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
+          return FALSE;
+        }
+      }
+      GST_DEBUG_OBJECT (self, "Updating outport port definition");
+      if (gst_omx_port_update_port_definition (self->enc_out_port,
+              NULL) != OMX_ErrorNone)
+        return FALSE;
+
+      if (self->target_bitrate != 0xffffffff) {
+        OMX_VIDEO_PARAM_BITRATETYPE config;
+        OMX_ERRORTYPE err;
+
+        GST_OMX_INIT_STRUCT (&config);
+        config.nPortIndex = self->enc_out_port->index;
+        /* Get default value of eControlRate to avoid setting an invalid value to it */
+        err = gst_omx_component_get_parameter (self->enc,
+            OMX_IndexParamVideoBitrate, &config);
+        if (err != OMX_ErrorNone)
+          GST_ERROR_OBJECT (self,
+              "Fail to get parameter of video bitrate: %s (0x%08x)",
+              gst_omx_error_to_string (err), err);
+
+        config.nTargetBitrate = self->target_bitrate;
+        if (self->control_rate != 0xffffffff)
+          config.eControlRate = self->control_rate;
+
+        err = gst_omx_component_set_parameter (self->enc,
+            OMX_IndexParamVideoBitrate, &config);
+        if (err != OMX_ErrorNone)
+          GST_ERROR_OBJECT (self,
+              "Failed to set bitrate parameter: %s (0x%08x)",
+              gst_omx_error_to_string (err), err);
+      }
+
+      if (gst_omx_component_set_state (self->enc,
+              OMX_StateIdle) != OMX_ErrorNone)
+        return FALSE;
+
+      if (gst_omx_port_allocate_buffers (self->enc_in_port) != OMX_ErrorNone)
+        return FALSE;
+
+      if (gst_omx_port_allocate_buffers (self->enc_out_port) != OMX_ErrorNone)
+        return FALSE;
+    } else {
+      /* Handle for case set_format() is called before propose_allocation() *
+       * Happen from GStreamer v1.6.3 */
+      if (gst_omx_component_get_state (self->enc,
+              GST_CLOCK_TIME_NONE) != OMX_StateExecuting)
+        return FALSE;
     }
-    GST_DEBUG_OBJECT (self, "Updating outport port definition");
-    if (gst_omx_port_update_port_definition (self->enc_out_port,
-            NULL) != OMX_ErrorNone)
-      return FALSE;
-
-    if (self->target_bitrate != 0xffffffff) {
-      OMX_VIDEO_PARAM_BITRATETYPE config;
-      OMX_ERRORTYPE err;
-
-      GST_OMX_INIT_STRUCT (&config);
-      config.nPortIndex = self->enc_out_port->index;
-      /* Get default value of eControlRate to avoid setting an invalid value to it */
-      err = gst_omx_component_get_parameter (self->enc,
-          OMX_IndexParamVideoBitrate, &config);
-      if (err != OMX_ErrorNone)
-        GST_ERROR_OBJECT (self,
-            "Fail to get parameter of video bitrate: %s (0x%08x)",
-            gst_omx_error_to_string (err), err);
-
-      config.nTargetBitrate = self->target_bitrate;
-      if (self->control_rate != 0xffffffff)
-        config.eControlRate = self->control_rate;
-
-      err = gst_omx_component_set_parameter (self->enc,
-          OMX_IndexParamVideoBitrate, &config);
-      if (err != OMX_ErrorNone)
-        GST_ERROR_OBJECT (self, "Failed to set bitrate parameter: %s (0x%08x)",
-            gst_omx_error_to_string (err), err);
-    }
-
-    if (gst_omx_component_set_state (self->enc, OMX_StateIdle) != OMX_ErrorNone)
-      return FALSE;
-
-    if (gst_omx_port_allocate_buffers (self->enc_in_port) != OMX_ErrorNone)
-      return FALSE;
-
-    if (gst_omx_port_allocate_buffers (self->enc_out_port) != OMX_ErrorNone)
-      return FALSE;
-
     if (gst_query_get_n_allocation_pools (query) == 0) {
       GstStructure *structure;
       GstAllocator *allocator = NULL;
