@@ -2849,9 +2849,6 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
     GstCaps *caps;
     gboolean update_pool = FALSE;
     if (gst_query_get_n_allocation_pools (query) > 0) {
-      gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, NULL, NULL);
-      g_assert (pool != NULL);
-      gst_object_unref (pool);
       update_pool = TRUE;
     }
     /* Set pool parameters to our own configuration */
