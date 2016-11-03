@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2015, Renesas Electronics Corporation
+ * Copyright (C) 2015-2016, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -521,9 +521,13 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
         GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf == TRUE &&
         (omx_buf->omx_buf->pOutputPortPrivate)) {
 #if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEODEC_EXT)
-      if (pool->allocator)
+      if (pool->allocator && GST_IS_OMX_MEMORY_ALLOCATOR (pool->allocator)) {
         gst_object_unref (pool->allocator);
-      pool->allocator = gst_dmabuf_allocator_new ();
+        pool->allocator = gst_dmabuf_allocator_new ();
+      }
+      GST_DEBUG_OBJECT (pool, "DMABUF - Using %s allocator",
+          pool->allocator->mem_type);
+
       buf = gst_omx_buffer_pool_create_buffer_contain_dmabuf (pool,
           omx_buf, (gint *) (&stride), (gsize *) (&offset));
       if (!buf) {
@@ -536,6 +540,13 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
       return GST_FLOW_ERROR;
 #endif
     } else {
+      if (pool->allocator && !GST_IS_OMX_MEMORY_ALLOCATOR (pool->allocator)) {
+        gst_object_unref (pool->allocator);
+        pool->allocator =
+            g_object_new (gst_omx_memory_allocator_get_type (), NULL);
+      }
+      GST_DEBUG_OBJECT (pool, "Using %s allocator", pool->allocator->mem_type);
+
       if (GST_IS_OMX_VIDEO_ENC (pool->element) &&
           pool->port->port_def.eDir == OMX_DirInput)
         /* Propose actual area of encoder to upstream */
