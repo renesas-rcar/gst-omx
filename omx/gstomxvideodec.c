@@ -2122,7 +2122,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     }
   }
 #ifdef HAVE_VIDEODEC_EXT
-  {
+  if (!needs_disable) {
     /* Setting reorder mode (output port only) */
     OMXR_MC_VIDEO_PARAM_REORDERTYPE sReorder;
     GST_OMX_INIT_STRUCT (&sReorder);
@@ -2136,7 +2136,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     gst_omx_component_set_parameter (self->dec, OMXR_MC_IndexParamVideoReorder,
         &sReorder);
   }
-  {
+  if (!needs_disable) {
     /* Setting lossy compression mode (output port) */
     OMXR_MC_VIDEO_PARAM_LOSSY_COMPRESSIONTYPE sLossy;
     GST_OMX_INIT_STRUCT (&sLossy);
@@ -2200,6 +2200,11 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
       if (gst_omx_port_wait_enabled (self->dec_out_port,
               5 * GST_SECOND) != OMX_ErrorNone)
         return FALSE;
+      if ((self->no_copy) || (self->use_dmabuf))
+        /* Create buffer pool for output port */
+        self->out_port_pool =
+            gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->dec,
+            self->dec_out_port);
     }
 
     if (gst_omx_port_wait_enabled (self->dec_in_port,
@@ -2267,10 +2272,8 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
    * for output buffers to be obtained properly.
    * This can not perform while the flushing flag is set
    */
-  if (!needs_disable) {
-    if (gst_omx_port_populate (self->dec_out_port) != OMX_ErrorNone)
-      return FALSE;
-  }
+  if (gst_omx_port_populate (self->dec_out_port) != OMX_ErrorNone)
+    return FALSE;
 
   if (gst_omx_component_get_last_error (self->dec) != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
