@@ -471,6 +471,12 @@ gst_omx_video_enc_shutdown (GstOMXVideoEnc * self)
 
   GST_DEBUG_OBJECT (self, "Shutting down encoder");
 
+  if (self->in_port_pool) {
+    gst_buffer_pool_set_active (self->in_port_pool, FALSE);
+    gst_object_unref (self->in_port_pool);
+    self->in_port_pool = NULL;
+  }
+
   state = gst_omx_component_get_state (self->enc, 0);
   if (state > OMX_StateLoaded || state == OMX_StateInvalid) {
     if (state > OMX_StateIdle) {
@@ -1822,7 +1828,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
             gst_omx_error_to_string (err), err);
     }
 
-    if (self->in_port_pool) {
+    if (self->no_copy) {
       GstMapInfo in_info;
       gint count = 0;
       GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (self->in_port_pool);
@@ -2084,7 +2090,7 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
   self = GST_OMX_VIDEO_ENC (encoder);
   klass = GST_OMX_VIDEO_ENC_GET_CLASS (encoder);
 
-  if (self->no_copy == TRUE) {
+  if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
     /* Allocate buffers and propose them to upstream */
     GstCaps *caps;
     GstVideoInfo info;
@@ -2240,11 +2246,11 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
           self->enc, self->enc_in_port);
 
       structure = gst_buffer_pool_get_config (self->in_port_pool);
+      gst_buffer_pool_config_add_option (structure, "not_change_num_buf");
       gst_buffer_pool_config_set_params (structure, caps,
           self->enc_in_port->port_def.nBufferSize,
           self->enc_in_port->port_def.nBufferCountActual,
           self->enc_in_port->port_def.nBufferCountActual);
-
       gst_buffer_pool_config_get_params (structure, &caps, NULL, &min, &max);
       gst_buffer_pool_config_set_allocator (structure, allocator, &params);
 
