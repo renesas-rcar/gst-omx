@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2015, Renesas Electronics Corporation
+ * Copyright (C) 2015, 2017 Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -354,7 +354,11 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
         GstOMXBuffer *buf = msg->content.buffer_done.buffer->pAppPrivate;
         GstOMXPort *port;
 
-        port = buf->port;
+        if (buf)
+          port = buf->port;
+        else
+          /* Buffer already freed */
+          break;
 
         if (msg->content.buffer_done.empty) {
           /* Input buffer is empty again and can be used to contain new input */
