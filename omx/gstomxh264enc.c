@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
- * Copyright (C) 2015, Renesas Electronics Corporation
+ * Copyright (C) 2015,2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -594,6 +594,12 @@ gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc * enc, GstOMXPort * port,
             buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
             buf->omx_buf->nFilledLen);
         gst_buffer_unmap (hdrs, &map);
+        /* Update timestamp for codec buffer as timestamp of input buffer
+         * to avoid incorrect timestamp when megring in downstream
+         */
+        GST_BUFFER_PTS (hdrs) = frame->pts;
+        GST_BUFFER_DTS (hdrs) = GST_BUFFER_PTS (hdrs);
+        GST_BUFFER_DURATION (hdrs) = frame->duration;
         self->headers = g_list_append (self->headers, hdrs);
 
         if (frame)
