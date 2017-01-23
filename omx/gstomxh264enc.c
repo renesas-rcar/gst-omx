@@ -560,8 +560,54 @@ gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
         g_assert_not_reached ();
         return NULL;
     }
-    gst_caps_set_simple (caps,
-        "profile", G_TYPE_STRING, profile, "level", G_TYPE_STRING, level, NULL);
+    {
+#ifdef USE_OMX_TARGET_RCAR
+      /* OMX component support auto update level base on parameters
+       * So it is necessary to check actual level and setting level
+       * If it is under auto update level, keep level on caps as setting
+       * from user to avoid negotiation error.
+       * But notify to user the actual level on encoded tream
+       */
+      GstCaps *peercaps;
+      const gchar *level_string;
+
+      peercaps = gst_pad_peer_query_caps (GST_VIDEO_ENCODER_SRC_PAD (enc),
+          gst_pad_get_pad_template_caps (GST_VIDEO_ENCODER_SRC_PAD (enc)));
+
+      if (peercaps) {
+        GstStructure *s;
+
+        if (gst_caps_is_empty (peercaps)) {
+          gst_caps_unref (peercaps);
+          GST_WARNING_OBJECT (self, "Peer_caps is empty caps");
+        } else {
+          s = gst_caps_get_structure (peercaps, 0);
+          level_string = gst_structure_get_string (s, "level");
+          if (level_string && (!g_str_equal (level_string, level))) {
+            /* FIXME: Currently, level=1 is auto judgment mode */
+            if (g_str_equal (level_string, "1")) {
+              GST_WARNING_OBJECT (self,
+                  "level: %s changed to appropriate level: %s. Video bitstream will have level %s",
+                  level_string, level, level);
+              level = level_string;
+            } else {
+              GST_ERROR_OBJECT (self,
+                  "Incorrect level: expect level %s actual level %s",
+                  level_string, level);
+            }
+          }
+        }
+      }
+#endif
+      gst_caps_set_simple (caps,
+          "profile", G_TYPE_STRING, profile, "level", G_TYPE_STRING, level,
+          NULL);
+#ifdef USE_OMX_TARGET_RCAR
+      if (peercaps)
+        /* Unref peercaps after seting value for caps */
+        gst_caps_unref (peercaps);
+#endif
+    }
   }
 
   return caps;
