@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2015-2016, Renesas Electronics Corporation
+ * Copyright (C) 2015-2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -375,7 +375,7 @@ gst_omx_buffer_pool_export_dmabuf (GstOMXBufferPool * pool,
  */
 static GstBuffer *
 gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
-    GstOMXBuffer * omx_buf, gint * stride, gsize * offset)
+    GstOMXBuffer * omx_buf, gint * stride, gint * slice, gsize * offset)
 {
   gint dmabuf_fd[GST_VIDEO_MAX_PLANES];
   gint plane_size[GST_VIDEO_MAX_PLANES];
@@ -403,14 +403,15 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
     /* Calculate offset between physical address and page boundary */
     page_offset[i] = phys_addr & (page_size - 1);
 
-    plane_size[i] = stride[i] *
-        GST_VIDEO_INFO_COMP_HEIGHT (&self->video_info, i);
+    plane_size[i] = stride[i] * slice[i];
+    GST_DEBUG_OBJECT (self, "Plane size %d: %d", i, plane_size[i]);
 
     /* When downstream plugins do mapping from dmabuf fd it requires
      * mapping from boundary page and size align for page size so
      * memory for plane must increase to handle for this case */
     plane_size_ext[i] = GST_ROUND_UP_N (plane_size[i] + page_offset[i],
         page_size);
+    GST_DEBUG_OBJECT (self, "Plane size extend %d: %d", i, plane_size_ext[i]);
 
     if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
             plane_size_ext[i], &dmabuf_id[i], &dmabuf_fd[i])) {
@@ -423,6 +424,7 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
     mem = gst_dmabuf_allocator_alloc (self->allocator, dmabuf_fd[i],
         plane_size_ext[i]);
     mem->offset = page_offset[i];
+    /* Only allow to access plane size */
     mem->size = plane_size[i];
     gst_buffer_append_memory (new_buf, mem);
 
@@ -490,6 +492,7 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     const guint nslice = pool->port->port_def.format.video.nSliceHeight;
     gsize offset[GST_VIDEO_MAX_PLANES] = { 0, };
     gint stride[GST_VIDEO_MAX_PLANES] = { nstride, 0, };
+    gint slice[GST_VIDEO_MAX_PLANES] = { nslice, 0, };
 
     switch (GST_VIDEO_INFO_FORMAT (&pool->video_info)) {
       case GST_VIDEO_FORMAT_ABGR:
@@ -503,13 +506,16 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
         break;
       case GST_VIDEO_FORMAT_I420:
         stride[1] = nstride / 2;
+        slice[1] = nslice / 2;
         offset[1] = offset[0] + stride[0] * nslice;
         stride[2] = nstride / 2;
+        slice[2] = slice[1];
         offset[2] = offset[1] + (stride[1] * nslice / 2);
         break;
       case GST_VIDEO_FORMAT_NV12:
       case GST_VIDEO_FORMAT_NV16:
         stride[1] = nstride;
+        slice[1] = nslice / 2;
         offset[1] = offset[0] + stride[0] * nslice;
         break;
       default:
@@ -529,7 +535,7 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
           pool->allocator->mem_type);
 
       buf = gst_omx_buffer_pool_create_buffer_contain_dmabuf (pool,
-          omx_buf, (gint *) (&stride), (gsize *) (&offset));
+          omx_buf, (gint *) (&stride), (gint *) (&slice), (gsize *) (&offset));
       if (!buf) {
         GST_ERROR_OBJECT (pool, "Can not create buffer contain dmabuf");
         return GST_FLOW_ERROR;
