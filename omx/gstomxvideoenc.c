@@ -1848,7 +1848,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
           do {
             acq_ret = gst_omx_port_acquire_buffer (port, &buf);
             if (acq_ret != GST_OMX_ACQUIRE_BUFFER_OK) {
-              GST_ERROR_OBJECT (self, "Can acquire buffer from input port");
+              GST_ERROR_OBJECT (self, "Can NOT acquire buffer from input port");
               gst_video_codec_frame_unref (frame);
               return GST_FLOW_ERROR;
             }
