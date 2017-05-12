@@ -53,8 +53,7 @@ static GstFlowReturn gst_omx_audio_dec_handle_frame (GstAudioDecoder * decoder,
     GstBuffer * buffer);
 static GstCaps *gst_omx_audio_dec_getcaps (GstAudioDecoder * dec,
     GstCaps * filter);
-static GstFlowReturn gst_omx_audio_dec_drain (GstOMXAudioDec * self,
-    gboolean is_eos);
+static GstFlowReturn gst_omx_audio_dec_drain (GstOMXAudioDec * self);
 
 enum
 {
@@ -715,7 +714,6 @@ gst_omx_audio_dec_start (GstAudioDecoder * decoder)
   self = GST_OMX_AUDIO_DEC (decoder);
 
   self->last_upstream_ts = 0;
-  self->eos = FALSE;
   self->downstream_flow_ret = GST_FLOW_OK;
 
   return TRUE;
@@ -740,7 +738,6 @@ gst_omx_audio_dec_stop (GstAudioDecoder * decoder)
 
   self->downstream_flow_ret = GST_FLOW_FLUSHING;
   self->started = FALSE;
-  self->eos = FALSE;
 
   g_mutex_lock (&self->drain_lock);
   self->draining = FALSE;
@@ -795,7 +792,7 @@ gst_omx_audio_dec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
 
     GST_DEBUG_OBJECT (self, "Need to disable and drain decoder");
 
-    gst_omx_audio_dec_drain (self, FALSE);
+    gst_omx_audio_dec_drain (self);
     gst_omx_audio_dec_flush (decoder, FALSE);
     gst_omx_port_set_flushing (out_port, 5 * GST_SECOND, TRUE);
 
@@ -959,18 +956,18 @@ gst_omx_audio_dec_flush (GstAudioDecoder * decoder, gboolean hard)
     gst_omx_component_get_state (self->dec, GST_CLOCK_TIME_NONE);
   }
 
-  /* 1) Wait until the srcpad loop is stopped,
+  /* 1) Flush the ports */
+  GST_DEBUG_OBJECT (self, "flushing ports");
+  gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, TRUE);
+  gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, TRUE);
+
+  /* 2) Wait until the srcpad loop is stopped,
    * unlock GST_AUDIO_DECODER_STREAM_LOCK to prevent deadlocks
    * caused by using this lock from inside the loop function */
   GST_AUDIO_DECODER_STREAM_UNLOCK (self);
   gst_pad_stop_task (GST_AUDIO_DECODER_SRC_PAD (decoder));
   GST_DEBUG_OBJECT (self, "Flushing -- task stopped");
   GST_AUDIO_DECODER_STREAM_LOCK (self);
-
-  /* 2) Flush the ports */
-  GST_DEBUG_OBJECT (self, "flushing ports");
-  gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, TRUE);
-  gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, TRUE);
 
   /* 3) Resume components */
   gst_omx_component_set_state (self->dec, OMX_StateExecuting);
@@ -989,7 +986,6 @@ gst_omx_audio_dec_flush (GstAudioDecoder * decoder, gboolean hard)
 
   /* Reset our state */
   self->last_upstream_ts = 0;
-  self->eos = FALSE;
   self->downstream_flow_ret = GST_FLOW_OK;
   self->started = FALSE;
   GST_DEBUG_OBJECT (self, "Flush finished");
@@ -1018,13 +1014,6 @@ gst_omx_audio_dec_handle_frame (GstAudioDecoder * decoder, GstBuffer * inbuf)
   if (inbuf)
     gst_buffer_ref (inbuf);
 
-  if (self->eos) {
-    GST_WARNING_OBJECT (self, "Got frame after EOS");
-    if (inbuf)
-      gst_buffer_unref (inbuf);
-    return GST_FLOW_EOS;
-  }
-
   if (self->downstream_flow_ret != GST_FLOW_OK) {
     if (inbuf)
       gst_buffer_unref (inbuf);
@@ -1038,7 +1027,7 @@ gst_omx_audio_dec_handle_frame (GstAudioDecoder * decoder, GstBuffer * inbuf)
   }
 
   if (inbuf == NULL)
-    return gst_omx_audio_dec_drain (self, TRUE);
+    return gst_omx_audio_dec_drain (self);
 
   timestamp = GST_BUFFER_TIMESTAMP (inbuf);
   duration = GST_BUFFER_DURATION (inbuf);
@@ -1312,7 +1301,7 @@ gst_omx_audio_dec_getcaps (GstAudioDecoder * dec, GstCaps * filter)
 }
 
 static GstFlowReturn
-gst_omx_audio_dec_drain (GstOMXAudioDec * self, gboolean is_eos)
+gst_omx_audio_dec_drain (GstOMXAudioDec * self)
 {
   GstOMXAudioDecClass *klass;
   GstOMXBuffer *buf;
@@ -1328,14 +1317,6 @@ gst_omx_audio_dec_drain (GstOMXAudioDec * self, gboolean is_eos)
     return GST_FLOW_OK;
   }
   self->started = FALSE;
-
-  /* Don't send EOS buffer twice, this doesn't work */
-  if (self->eos) {
-    GST_DEBUG_OBJECT (self, "Component is EOS already");
-    return GST_FLOW_OK;
-  }
-  if (is_eos)
-    self->eos = TRUE;
 
   if ((klass->cdata.hacks & GST_OMX_HACK_NO_EMPTY_EOS_BUFFER)) {
     GST_WARNING_OBJECT (self, "Component does not support empty EOS buffers");
