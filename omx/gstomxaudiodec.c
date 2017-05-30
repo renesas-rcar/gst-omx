@@ -715,6 +715,7 @@ gst_omx_audio_dec_start (GstAudioDecoder * decoder)
   self = GST_OMX_AUDIO_DEC (decoder);
 
   self->last_upstream_ts = 0;
+  self->eos = FALSE;
   self->downstream_flow_ret = GST_FLOW_OK;
 
   return TRUE;
@@ -739,6 +740,7 @@ gst_omx_audio_dec_stop (GstAudioDecoder * decoder)
 
   self->downstream_flow_ret = GST_FLOW_FLUSHING;
   self->started = FALSE;
+  self->eos = FALSE;
 
   g_mutex_lock (&self->drain_lock);
   self->draining = FALSE;
@@ -989,6 +991,7 @@ gst_omx_audio_dec_flush (GstAudioDecoder * decoder, gboolean hard)
   self->last_upstream_ts = 0;
   self->downstream_flow_ret = GST_FLOW_OK;
   self->started = FALSE;
+  self->eos = FALSE;
   GST_DEBUG_OBJECT (self, "Flush finished");
 }
 
@@ -1021,7 +1024,7 @@ gst_omx_audio_dec_handle_frame (GstAudioDecoder * decoder, GstBuffer * inbuf)
     return self->downstream_flow_ret;
   }
 
-  if (!self->started) {
+  if (!self->started && !self->eos) {
     GST_DEBUG_OBJECT (self, "Starting task");
     gst_pad_start_task (GST_AUDIO_DECODER_SRC_PAD (self),
         (GstTaskFunction) gst_omx_audio_dec_loop, decoder, NULL);
@@ -1371,6 +1374,7 @@ gst_omx_audio_dec_drain (GstOMXAudioDec * self)
     g_cond_wait (&self->drain_cond, &self->drain_lock);
     GST_DEBUG_OBJECT (self, "Drained component");
   }
+  self->eos = TRUE;
 
   g_mutex_unlock (&self->drain_lock);
   GST_AUDIO_DECODER_STREAM_LOCK (self);
