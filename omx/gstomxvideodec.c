@@ -505,13 +505,16 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
   if (gst_video_frame_map (&frame, vinfo, outbuf, GST_MAP_WRITE)) {
     const guint nstride = port_def->format.video.nStride;
     const guint nslice = port_def->format.video.nSliceHeight;
-    guint src_stride[GST_VIDEO_MAX_PLANES] = { nstride, 0, };
-    guint src_size[GST_VIDEO_MAX_PLANES] = { nstride * nslice, 0, };
+    guint src_stride[GST_VIDEO_MAX_PLANES] = { 0, };
+    guint src_size[GST_VIDEO_MAX_PLANES] = { 0, };
     gint dst_width[GST_VIDEO_MAX_PLANES] = { 0, };
-    gint dst_height[GST_VIDEO_MAX_PLANES] =
-        { GST_VIDEO_INFO_HEIGHT (vinfo), 0, };
+    gint dst_height[GST_VIDEO_MAX_PLANES] = { 0, };
     const guint8 *src;
     guint p;
+
+    src_stride[0] = nstride;
+    src_size[0] = nstride * nslice;
+    dst_height[0] = GST_VIDEO_INFO_HEIGHT (vinfo);
 
     switch (GST_VIDEO_INFO_FORMAT (vinfo)) {
       case GST_VIDEO_FORMAT_ABGR:

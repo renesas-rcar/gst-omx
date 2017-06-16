@@ -299,6 +299,8 @@ gst_omx_audio_dec_loop (GstOMXAudioDec * self)
   GstOMXAcquireBufferReturn acq_return;
   OMX_ERRORTYPE err;
 
+  GstOMXAudioDecClass *klass = GST_OMX_AUDIO_DEC_GET_CLASS (self);
+
   acq_return = gst_omx_port_acquire_buffer (port, &buf);
   if (acq_return == GST_OMX_ACQUIRE_BUFFER_ERROR) {
     goto component_error;
@@ -313,7 +315,6 @@ gst_omx_audio_dec_loop (GstOMXAudioDec * self)
     OMX_PARAM_PORTDEFINITIONTYPE port_def;
     OMX_AUDIO_PARAM_PCMMODETYPE pcm_param;
     GstAudioChannelPosition omx_position[OMX_AUDIO_MAXCHANNELS];
-    GstOMXAudioDecClass *klass = GST_OMX_AUDIO_DEC_GET_CLASS (self);
     gint i;
 
     GST_DEBUG_OBJECT (self, "Port settings have changed, updating caps");

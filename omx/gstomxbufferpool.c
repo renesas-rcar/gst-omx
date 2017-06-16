@@ -491,8 +491,11 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     const guint nstride = pool->port->port_def.format.video.nStride;
     const guint nslice = pool->port->port_def.format.video.nSliceHeight;
     gsize offset[GST_VIDEO_MAX_PLANES] = { 0, };
-    gint stride[GST_VIDEO_MAX_PLANES] = { nstride, 0, };
-    gint slice[GST_VIDEO_MAX_PLANES] = { nslice, 0, };
+    gint stride[GST_VIDEO_MAX_PLANES] = { 0, };
+    gint slice[GST_VIDEO_MAX_PLANES] = { 0, };
+
+    stride[0] = nstride;
+    slice[0] = nslice;
 
     switch (GST_VIDEO_INFO_FORMAT (&pool->video_info)) {
       case GST_VIDEO_FORMAT_ABGR:

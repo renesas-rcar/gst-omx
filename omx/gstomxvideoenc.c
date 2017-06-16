@@ -128,7 +128,7 @@ static gboolean gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
 static gboolean gst_omx_video_enc_flush (GstVideoEncoder * encoder);
 static GstFlowReturn gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
     GstVideoCodecFrame * frame);
-static gboolean gst_omx_video_enc_finish (GstVideoEncoder * encoder);
+static GstFlowReturn gst_omx_video_enc_finish (GstVideoEncoder * encoder);
 static gboolean gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
     GstQuery * query);
 static GstCaps *gst_omx_video_enc_getcaps (GstVideoEncoder * encoder,
