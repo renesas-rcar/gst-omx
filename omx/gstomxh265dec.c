@@ -70,8 +70,7 @@ gst_omx_h265_dec_class_init (GstOMXH265DecClass * klass)
   gst_element_class_set_static_metadata (element_class,
       "OpenMAX H.265 Video Decoder",
       "Codec/Decoder/Video",
-      "Decode H.265 video streams",
-      "Renesas Electronics Corporation");
+      "Decode H.265 video streams", "Renesas Electronics Corporation");
 
   gst_omx_set_default_role (&videodec_class->cdata, "video_decoder.hevc");
 }

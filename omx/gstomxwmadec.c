@@ -74,8 +74,7 @@ gst_omx_wma_dec_class_init (GstOMXWMADecClass * klass)
   gst_element_class_set_static_metadata (element_class,
       "OpenMAX WMA Audio Decoder",
       "Codec/Decoder/Audio",
-      "Decode WMA audio streams",
-      "Renesas Electronics Corporation");
+      "Decode WMA audio streams", "Renesas Electronics Corporation");
 
   gst_omx_set_default_role (&audiodec_class->cdata, "audio_decoder.wma");
 }
