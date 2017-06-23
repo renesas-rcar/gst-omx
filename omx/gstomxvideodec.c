@@ -1429,6 +1429,41 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
          * deallocate output buffers */
         self->out_port_pool =
             gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->dec, port);
+
+        if (gst_pad_has_current_caps (GST_VIDEO_DECODER_SRC_PAD (self))) {
+          GstStructure *config;
+          GstCaps *caps;
+
+          /* Reconfigure for pool when negotiated for caps. This is support
+           * for reconfigure due to caps change.
+           * If caps haven't negotiated yet, configure for pool will be done
+           * on decide_allocation */
+
+          caps = gst_pad_get_current_caps (GST_VIDEO_DECODER_SRC_PAD (self));
+          config = gst_buffer_pool_get_config (self->out_port_pool);
+          gst_buffer_pool_config_add_option (config,
+              GST_BUFFER_POOL_OPTION_VIDEO_META);
+          gst_buffer_pool_config_set_params (config, caps,
+              self->dec_out_port->port_def.nBufferSize,
+              self->dec_out_port->port_def.nBufferCountActual,
+              self->dec_out_port->port_def.nBufferCountActual);
+          gst_caps_unref (caps);
+          if (!gst_buffer_pool_set_config (self->out_port_pool, config)) {
+            GST_ERROR_OBJECT (self, "Failed to set config on internal pool");
+            gst_object_unref (self->out_port_pool);
+            self->out_port_pool = NULL;
+            goto reconfigure_error;
+          }
+          GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = TRUE;
+          if (!gst_buffer_pool_set_active (self->out_port_pool, TRUE)) {
+            GST_INFO_OBJECT (self, "Failed to activate internal pool");
+            gst_object_unref (self->out_port_pool);
+            self->out_port_pool = NULL;
+            goto reconfigure_error;
+          } else {
+            GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = FALSE;
+          }
+        }
       } else if (self->no_copy == FALSE) {
         GST_DEBUG_OBJECT (self, "Copy mode does not use out_port_pool");
       } else
@@ -2163,7 +2198,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
 #ifdef USE_OMX_TARGET_RCAR
-  {
+  if (!needs_disable) {
     OMX_PARAM_PORTDEFINITIONTYPE out_port_def;
 
     /* Initialize default output allocation align for page size */
