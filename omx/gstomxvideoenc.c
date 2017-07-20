@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
- * Copyright (C) 2015-2016, Renesas Electronics Corporation
+ * Copyright (C) 2015-2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -1362,8 +1362,10 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
                   addr) != OMX_ErrorNone) {
             GST_ERROR_OBJECT (self,
                 ("Fail to allocate OMXBuffer by using OMX_UseBuffer"));
+            g_list_free ((GList *) addr);
             return FALSE;
           }
+          g_list_free ((GList *) addr);
 #else
           GST_ERROR_OBJECT (self,
               ("dmabuf mode is invalid now due to MC does not support extension address"));
