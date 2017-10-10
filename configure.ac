@@ -200,7 +200,7 @@ AC_ARG_ENABLE(Bsymbolic,
                LDFLAGS="${SAVED_LDFLAGS}" LIBS="${SAVED_LIBS}"])
 
 AC_ARG_WITH([omx-target],
-        AS_HELP_STRING([--with-omx-target],[Use this OpenMAX IL target (generic, bellagio, rpi, tizonia, zynqultrascaleplus)]),
+        AS_HELP_STRING([--with-omx-target],[Use this OpenMAX IL target (generic, bellagio, rpi, tizonia, zynqultrascaleplusi, rcar)]),
         [ac_cv_omx_target="$withval"], [ac_cv_omx_target="none"])
 
 ac_cv_omx_target_struct_packing="none"
@@ -223,8 +223,11 @@ case "${ac_cv_omx_target}" in
   tizonia)
     AC_DEFINE(USE_OMX_TARGET_TIZONIA, 1, [Use Tizonia OpenMAX IL target])
     ;;
+  rcar)
+    AC_DEFINE(USE_OMX_TARGET_RCAR, 1, [Use RCar OpenMAX IL target])
+    ;;
   none|*)
-    AC_ERROR([invalid OpenMAX IL target, you must specify one of --with-omx-target={generic,rpi,bellagio,tizonia,zynqultrascaleplus}])
+    AC_ERROR([invalid OpenMAX IL target, you must specify one of --with-omx-target={generic,rpi,bellagio,tizonia,zynqultrascaleplus,rcar}])
     ;;
 esac
 AM_CONDITIONAL(USE_OMX_TARGET_GENERIC, test "x$ac_cv_omx_target" = "xgeneric")
@@ -232,6 +235,7 @@ AM_CONDITIONAL(USE_OMX_TARGET_BELLAGIO, test "x$ac_cv_omx_target" = "xbellagio")
 AM_CONDITIONAL(USE_OMX_TARGET_TIZONIA, test "x$ac_cv_omx_target" = "xtizonia")
 AM_CONDITIONAL(USE_OMX_TARGET_RPI, test "x$ac_cv_omx_target" = "xrpi")
 AM_CONDITIONAL(USE_OMX_TARGET_ZYNQ_USCALE_PLUS, test "x$ac_cv_omx_target" = "xzynqultrascaleplus")
+AM_CONDITIONAL(USE_OMX_TARGET_RCAR, test "x$ac_cv_omx_target" = "xrcar")
 
 AC_ARG_WITH([omx-struct-packing],
         AS_HELP_STRING([--with-omx-struct-packing],[Force OpenMAX struct packing, (default is none)]),
@@ -466,6 +470,7 @@ config/rpi/Makefile
 config/tizonia/gstomx.conf
 config/tizonia/Makefile
 config/zynqultrascaleplus/Makefile
+config/rcar/Makefile
 examples/Makefile
 examples/egl/Makefile
 m4/Makefile
