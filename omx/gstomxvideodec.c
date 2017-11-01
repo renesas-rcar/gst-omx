@@ -91,7 +91,8 @@ static void gst_omx_video_dec_get_property (GObject * object, guint prop_id,
 enum
 {
   PROP_0,
-  PROP_NO_COPY
+  PROP_NO_COPY,
+  PROP_USE_DMABUF
 };
 
 /* class initialization */
@@ -147,6 +148,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
           "Whether or not to transfer decoded data without copy",
           FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_USE_DMABUF,
+      g_param_spec_boolean ("use-dmabuf", "Use dmabuffer ",
+          "Whether or not to transfer decoded data using dmabuf",
+          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 }
 
 static void
@@ -160,6 +166,11 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
   g_mutex_init (&self->drain_lock);
   g_cond_init (&self->drain_cond);
   self->no_copy = FALSE;
+#ifdef HAVE_MMNGRBUF
+  self->use_dmabuf = TRUE;
+#else
+  self->use_dmabuf = FALSE;
+#endif
 }
 
 static gboolean
@@ -1368,7 +1379,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         if (err != OMX_ErrorNone)
           goto reconfigure_error;
 
-        if (self->no_copy == TRUE) {
+        if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
           /* Re-create new out_port_pool. The old one has been freed when
            * deallocate output buffers */
           self->out_port_pool =
@@ -2140,7 +2151,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
               5 * GST_SECOND) != OMX_ErrorNone)
         return FALSE;
     }
-    if (self->no_copy == TRUE) {
+    if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
       /* Re-create buffer pool for output port. The old one has been
        * freed when deallocate output buffers */
       self->out_port_pool =
@@ -2185,7 +2196,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
         return FALSE;
     }
 
-    if (self->no_copy == TRUE) {
+    if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
       /* Create buffer pool for output port */
       self->out_port_pool =
           gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->dec,
@@ -2806,8 +2817,12 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     case PROP_NO_COPY:
     {
       self->no_copy = g_value_get_boolean (value);
+      self->use_dmabuf = FALSE;
       break;
     }
+    case PROP_USE_DMABUF:
+      self->use_dmabuf = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2823,6 +2838,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_NO_COPY:
       g_value_set_boolean (value, self->no_copy);
+      break;
+    case PROP_USE_DMABUF:
+      g_value_set_boolean (value, self->use_dmabuf);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
