@@ -904,16 +904,19 @@ gst_omx_audio_dec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
           NULL) != OMX_ErrorNone)
     return FALSE;
 
-  /* Get codec data from caps */
-  gst_buffer_replace (&self->codec_data, NULL);
-  s = gst_caps_get_structure (caps, 0);
-  codec_data = gst_structure_get_value (s, "codec_data");
-  if (codec_data) {
-    /* Vorbis and some other codecs have multiple buffers in
-     * the stream-header field */
-    self->codec_data = gst_value_get_buffer (codec_data);
-    if (self->codec_data)
-      gst_buffer_ref (self->codec_data);
+  /* Skip to get codec data from cap if use "skip-handle-codec-data" hack */
+  if (!(klass->cdata.hacks & GST_OMX_HACK_SKIP_HANDLE_CODEC_DATA)) {
+    /* Get codec data from caps */
+    gst_buffer_replace (&self->codec_data, NULL);
+    s = gst_caps_get_structure (caps, 0);
+    codec_data = gst_structure_get_value (s, "codec_data");
+    if (codec_data) {
+      /* Vorbis and some other codecs have multiple buffers in
+       * the stream-header field */
+      self->codec_data = gst_value_get_buffer (codec_data);
+      if (self->codec_data)
+        gst_buffer_ref (self->codec_data);
+    }
   }
 
   GST_DEBUG_OBJECT (self, "Enabling component");
