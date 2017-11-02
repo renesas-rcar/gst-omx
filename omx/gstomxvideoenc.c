@@ -2256,9 +2256,17 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
     OMX_ERRORTYPE err;
 
     GST_OMX_INIT_STRUCT (&config);
+    /* Get default value of eControlRate to avoid setting an invalid value to it */
+    err = gst_omx_component_get_parameter (self->enc,
+        OMX_IndexParamVideoBitrate, &config);
+    if (err != OMX_ErrorNone)
+      GST_ERROR_OBJECT (self,
+          "Fail to get parameter of video bitrate: %s (0x%08x)",
+          gst_omx_error_to_string (err), err);
     config.nPortIndex = self->enc_out_port->index;
     config.nTargetBitrate = self->target_bitrate;
-    config.eControlRate = self->control_rate;
+    if (self->control_rate != 0xffffffff)
+      config.eControlRate = self->control_rate;
     err = gst_omx_component_set_parameter (self->enc,
         OMX_IndexParamVideoBitrate, &config);
     if (err != OMX_ErrorNone)
