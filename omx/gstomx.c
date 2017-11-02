@@ -385,7 +385,11 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
         GstOMXBuffer *buf = msg->content.buffer_done.buffer->pAppPrivate;
         GstOMXPort *port;
 
-        port = buf->port;
+        if (buf)
+          port = buf->port;
+        else
+          /* Buffer already freed */
+          break;
 
         if (msg->content.buffer_done.empty) {
           /* Input buffer is empty again and can be used to contain new input */
