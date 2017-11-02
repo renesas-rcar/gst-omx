@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014, Sebastian Dröge <sebastian@centricular.com>
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -45,6 +46,9 @@ struct _GstOMXAACDec
 {
   GstOMXAudioDec parent;
   gint spf;
+  /* Set FALSE if do not use down mix. Down mix will be set TRUE as default
+   * With down_mix=TRUE, output channel is always 2 (stereo)*/
+  gboolean down_mix;
 };
 
 struct _GstOMXAACDecClass
