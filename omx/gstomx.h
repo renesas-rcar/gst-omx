@@ -3,6 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -138,6 +139,16 @@ G_BEGIN_DECLS
  * which is a multiple of 16 pixels
  */
 #define GST_OMX_HACK_HEIGHT_MULTIPLE_16             G_GUINT64_CONSTANT (0x0000000000000200)
+
+/* omx videodecoder support 3 modes (copy, no-copy(use buffer of Bufferpool), dmabuf) to choose.
+ * Default is dmabuf mode. This hack will choose copy mode is default mode
+ */
+#define GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT                         G_GUINT64_CONSTANT (0x0000000000000800)
+
+/* omx videodecoder support 3 modes (copy, no-copy(use buffer of Bufferpool), dmabuf) to choose.
+ * Default is dmabuf mode. This hack will choose no-copy mode is default mode
+ */
+#define GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT                      G_GUINT64_CONSTANT (0x0000000000001000)
 
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;
