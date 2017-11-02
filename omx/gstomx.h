@@ -223,6 +223,11 @@ G_BEGIN_DECLS
  */
 #define GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO                       G_GUINT64_CONSTANT (0x0000000000002000)
 
+/* If the component does not handle for codec data. Skip this handling
+ * Happens with Renesas OMX WMADEC
+ */
+#define GST_OMX_HACK_SKIP_HANDLE_CODEC_DATA                           G_GUINT64_CONSTANT (0x0000000000004000)
+
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;
 typedef enum _GstOMXPortDirection GstOMXPortDirection;
