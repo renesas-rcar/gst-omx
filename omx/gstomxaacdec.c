@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014, Sebastian Dröge <sebastian@centricular.com>
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,6 +25,9 @@
 #include <gst/gst.h>
 
 #include "gstomxaacdec.h"
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_AACDEC_EXT)
+#include "OMXR_Extension_aapd.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_aac_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_aac_dec_debug_category
@@ -37,6 +41,16 @@ static gint gst_omx_aac_dec_get_samples_per_frame (GstOMXAudioDec * dec,
     GstOMXPort * port);
 static gboolean gst_omx_aac_dec_get_channel_positions (GstOMXAudioDec * dec,
     GstOMXPort * port, GstAudioChannelPosition position[OMX_AUDIO_MAXCHANNELS]);
+static void gst_omx_aac_dec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec);
+static void gst_omx_aac_dec_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec);
+
+enum
+{
+  PROP_0,
+  PROP_DOWN_MIX
+};
 
 /* class initialization */
 
@@ -52,6 +66,10 @@ gst_omx_aac_dec_class_init (GstOMXAACDecClass * klass)
 {
   GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
   GstOMXAudioDecClass *audiodec_class = GST_OMX_AUDIO_DEC_CLASS (klass);
+
+  GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+  gobject_class->set_property = gst_omx_aac_dec_set_property;
+  gobject_class->get_property = gst_omx_aac_dec_get_property;
 
   audiodec_class->set_format = GST_DEBUG_FUNCPTR (gst_omx_aac_dec_set_format);
   audiodec_class->is_format_change =
@@ -73,6 +91,13 @@ gst_omx_aac_dec_class_init (GstOMXAACDecClass * klass)
       "Decode AAC audio streams",
       "Sebastian Dröge <sebastian@centricular.com>");
 
+  g_object_class_install_property (gobject_class, PROP_DOWN_MIX,
+      g_param_spec_boolean ("down-mix", "Down Mix",
+          "Whether or not use down mix function.\n\
+                      down-mix=true: output channel is 2 always.\n\
+                      down-mix=false: output channel is 1, 2 or 6\n\
+                      This option is available for omxaacdec only", TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
   gst_omx_set_default_role (&audiodec_class->cdata, "audio_decoder.aac");
 }
 
@@ -81,6 +106,7 @@ gst_omx_aac_dec_init (GstOMXAACDec * self)
 {
   /* FIXME: Other values exist too! */
   self->spf = 1024;
+  self->down_mix = TRUE;
 }
 
 static gboolean
@@ -161,6 +187,31 @@ gst_omx_aac_dec_set_format (GstOMXAudioDec * dec, GstOMXPort * port,
         gst_omx_error_to_string (err), err);
     return FALSE;
   }
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_AACDEC_EXT)
+  {
+    /* Setting down-mix mode */
+    GstOMXAudioDecClass *klass;
+    klass = GST_OMX_AUDIO_DEC_GET_CLASS (dec);
+    if (g_strcmp0 (klass->cdata.component_name,
+            "OMX.RENESAS.AUDIO.DECODER.AAC") == 0) {
+      OMXR_MC_AUDIO_PARAM_AACDOWNMIXTYPE downmix_par;
+      GST_OMX_INIT_STRUCT (&downmix_par);
+      downmix_par.nPortIndex = dec->dec_out_port->index;
+      if (self->down_mix != FALSE)
+        downmix_par.bDownmix = TRUE;
+      else
+        downmix_par.bDownmix = FALSE;
+
+      gst_omx_component_set_parameter
+          (dec->dec, OMXR_MC_IndexParamAacDownMix, &downmix_par);
+    } else {
+      GST_WARNING_OBJECT (self, "down-mix is not effective on omxaaclcdec");
+    }
+  }
+#else
+  GST_WARNING_OBJECT (self,
+      "down-mix option is invalid now due to MC does not support");
+#endif
 
   return TRUE;
 }
@@ -293,4 +344,36 @@ gst_omx_aac_dec_get_channel_positions (GstOMXAudioDec * dec,
   }
 
   return TRUE;
+}
+
+static void
+gst_omx_aac_dec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstOMXAACDec *self = GST_OMX_AAC_DEC (object);
+
+  switch (prop_id) {
+    case PROP_DOWN_MIX:
+      self->down_mix = g_value_get_boolean (value);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_omx_aac_dec_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec)
+{
+  GstOMXAACDec *self = GST_OMX_AAC_DEC (object);
+
+  switch (prop_id) {
+    case PROP_DOWN_MIX:
+      g_value_set_boolean (value, self->down_mix);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
 }
