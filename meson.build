@@ -238,6 +238,12 @@ elif omx_target == 'rcar'
     if have_mmngrbuf and have_exvdcmn
       cdata.set ('USE_RCAR_DMABUF', 1)
     endif
+
+  # check OMXR_Extension_aapd.h
+  if cc.has_header (
+      'OMXR_Extension_aapd.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_AACDEC_EXT', 1)
   endif
 else
   error ('Unsupported omx target specified. Use the -Dtarget option')
