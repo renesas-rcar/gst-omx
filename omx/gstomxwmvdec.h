@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -45,6 +46,7 @@ typedef struct _GstOMXWMVDecClass GstOMXWMVDecClass;
 struct _GstOMXWMVDec
 {
   GstOMXVideoDec parent;
+  gboolean advanced_profile;
 };
 
 struct _GstOMXWMVDecClass
