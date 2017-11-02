@@ -4,6 +4,7 @@
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
  * Copyright (C) 2014, Sebastian Dröge <sebastian@centricular.com>
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -405,6 +406,16 @@ gst_omx_audio_dec_loop (GstOMXAudioDec * self)
     if (pcm_param.nChannels == 1
         && omx_position[0] == GST_AUDIO_CHANNEL_POSITION_FRONT_CENTER)
       omx_position[0] = GST_AUDIO_CHANNEL_POSITION_MONO;
+
+#ifdef USE_OMX_TARGET_RCAR
+    /* Workaround for handle audio stream have dual channel */
+    if (pcm_param.nChannels == 2
+        && omx_position[0] == GST_AUDIO_CHANNEL_POSITION_FRONT_CENTER
+        && omx_position[1] == GST_AUDIO_CHANNEL_POSITION_FRONT_CENTER) {
+      omx_position[0] = GST_AUDIO_CHANNEL_POSITION_FRONT_LEFT;
+      omx_position[1] = GST_AUDIO_CHANNEL_POSITION_FRONT_RIGHT;
+    }
+#endif
 
     if (omx_position[0] == GST_AUDIO_CHANNEL_POSITION_NONE
         && klass->get_channel_positions) {
