@@ -1061,8 +1061,21 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
   if (port_def.nBufferAlignment)
     port_def.format.video.nStride =
         GST_ROUND_UP_N (info->width, port_def.nBufferAlignment);
-  else
-    port_def.format.video.nStride = GST_ROUND_UP_4 (info->width);       /* safe (?) default */
+  else {
+    if (klass->cdata.hacks & GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN) {
+      switch (port_def.format.video.eColorFormat) {
+        case OMX_COLOR_FormatYUV420Planar:
+          port_def.format.video.nStride = GST_ROUND_UP_64 (info->width);
+          break;
+        case OMX_COLOR_FormatYUV420SemiPlanar:
+          port_def.format.video.nStride = GST_ROUND_UP_32 (info->width);
+          break;
+        default:
+          break;
+      }
+    } else
+      port_def.format.video.nStride = GST_ROUND_UP_4 (info->width);     /* safe (?) default */
+  }
 
   port_def.format.video.nFrameHeight = info->height;
 
