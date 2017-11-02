@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014, Sebastian Dröge <sebastian@centricular.com>
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -75,6 +76,8 @@ struct _GstOMXAudioDec
   GCond drain_cond;
   /* TRUE if EOS buffers shouldn't be forwarded */
   gboolean draining;
+  /* TRUE if upstream is EOS */
+  gboolean eos;
 
   GstAdapter *output_adapter;
 
