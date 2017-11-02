@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014, Sebastian Dröge <sebastian@centricular.com>
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -128,7 +129,12 @@ gst_omx_mp3_dec_set_format (GstOMXAudioDec * dec, GstOMXPort * port,
     return FALSE;
   }
 
-  self->spf = (mpegaudioversion == 1 ? 1152 : 576);
+  if (layer == 1)
+    self->spf = 384;
+  else if (layer == 2)
+    self->spf = 1152;
+  else
+    self->spf = (mpegaudioversion == 1 ? 1152 : 576);
 
   mp3_param.nChannels = channels;
   mp3_param.nBitRate = 0;       /* unknown */
