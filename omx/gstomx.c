@@ -3734,6 +3734,8 @@ gst_omx_parse_hacks (gchar ** hacks)
       hacks_flags |= GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT;
     else if (g_str_equal (*hacks, "default-pix-aspect-ratio"))
       hacks_flags |= GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO;
+    else if (g_str_equal (*hacks, "skip-handle-codec-data"))
+      hacks_flags |= GST_OMX_HACK_SKIP_HANDLE_CODEC_DATA;
     else
       GST_WARNING ("Unknown hack: %s", *hacks);
     hacks++;
