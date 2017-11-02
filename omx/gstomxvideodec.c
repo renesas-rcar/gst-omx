@@ -1310,6 +1310,7 @@ gst_omx_video_dec_reconfigure_output_port (GstOMXVideoDec * self)
   GstVideoCodecState *state;
   OMX_PARAM_PORTDEFINITIONTYPE port_def;
   GstVideoFormat format;
+  GstOMXVideoDecClass *klass = GST_OMX_VIDEO_DEC_GET_CLASS (self);
 
   /* At this point the decoder output port is disabled */
 
@@ -1542,6 +1543,12 @@ gst_omx_video_dec_reconfigure_output_port (GstOMXVideoDec * self)
       format, port_def.format.video.nFrameWidth,
       port_def.format.video.nFrameHeight, self->input_state);
 
+  if (klass->cdata.hacks & GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO) {
+    /* Set pixel-aspect-ratio is 1/1. It means that always keep
+     * original image when display   */
+    state->info.par_d = state->info.par_n;
+  }
+
   if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
     gst_video_codec_state_unref (state);
     GST_ERROR_OBJECT (self, "Failed to negotiate");
@@ -1679,6 +1686,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
   GstFlowReturn flow_ret = GST_FLOW_OK;
   GstOMXAcquireBufferReturn acq_return;
   OMX_ERRORTYPE err;
+  GstOMXVideoDecClass *klass = GST_OMX_VIDEO_DEC_GET_CLASS (self);
 
 #if defined (USE_OMX_TARGET_RPI) && defined (HAVE_GST_GL)
   port = self->eglimage ? self->egl_out_port : self->dec_out_port;
@@ -1760,6 +1768,11 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           port_def.format.video.nFrameHeight, self->input_state);
 
       /* Take framerate and pixel-aspect-ratio from sinkpad caps */
+      if (klass->cdata.hacks & GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO) {
+        /* Set pixel-aspect-ratio is 1/1. It means that always keep
+         * original image when display   */
+        state->info.par_d = state->info.par_n;
+      }
 
       if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
         if (buf)

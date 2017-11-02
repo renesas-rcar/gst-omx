@@ -218,6 +218,10 @@ G_BEGIN_DECLS
  */
 #define GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT                      G_GUINT64_CONSTANT (0x0000000000001000)
 
+/* Support default pixel aspect ratio is 1:1.
+ */
+#define GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO                       G_GUINT64_CONSTANT (0x0000000000002000)
+
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;
 typedef enum _GstOMXPortDirection GstOMXPortDirection;
