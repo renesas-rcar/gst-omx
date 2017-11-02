@@ -51,6 +51,8 @@ static gboolean gst_omx_audio_dec_set_format (GstAudioDecoder * decoder,
 static void gst_omx_audio_dec_flush (GstAudioDecoder * decoder, gboolean hard);
 static GstFlowReturn gst_omx_audio_dec_handle_frame (GstAudioDecoder * decoder,
     GstBuffer * buffer);
+static GstCaps *gst_omx_audio_dec_getcaps (GstAudioDecoder * dec,
+    GstCaps * filter);
 static GstFlowReturn gst_omx_audio_dec_drain (GstOMXAudioDec * self);
 
 enum
@@ -89,6 +91,7 @@ gst_omx_audio_dec_class_init (GstOMXAudioDecClass * klass)
       GST_DEBUG_FUNCPTR (gst_omx_audio_dec_set_format);
   audio_decoder_class->handle_frame =
       GST_DEBUG_FUNCPTR (gst_omx_audio_dec_handle_frame);
+  audio_decoder_class->getcaps = GST_DEBUG_FUNCPTR (gst_omx_audio_dec_getcaps);
 
   klass->cdata.type = GST_OMX_COMPONENT_TYPE_FILTER;
   klass->cdata.default_src_template_caps =
@@ -1331,6 +1334,21 @@ release_error:
 
     return GST_FLOW_ERROR;
   }
+}
+
+static GstCaps *
+gst_omx_audio_dec_getcaps (GstAudioDecoder * dec, GstCaps * filter)
+{
+  GstCaps *templ_caps;
+  GstCaps *fcaps;
+  templ_caps = gst_pad_get_pad_template_caps (dec->sinkpad);
+  if (filter) {
+    fcaps = gst_caps_intersect (templ_caps, filter);
+    gst_caps_unref (templ_caps);
+    templ_caps = fcaps;
+  }
+
+  return templ_caps;
 }
 
 static GstFlowReturn
