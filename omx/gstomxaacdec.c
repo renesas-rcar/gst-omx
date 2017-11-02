@@ -283,6 +283,38 @@ gst_omx_aac_dec_is_format_change (GstOMXAudioDec * dec, GstOMXPort * port,
 static gint
 gst_omx_aac_dec_get_samples_per_frame (GstOMXAudioDec * dec, GstOMXPort * port)
 {
+  /* Handle for aacplus */
+  OMX_AUDIO_PARAM_AACPROFILETYPE aac_param;
+  OMX_AUDIO_PARAM_PCMMODETYPE pcm_param;
+  OMX_ERRORTYPE err;
+  /* aacplus has output sampling rate = 2 * input sampling rate
+   * check input sampling rate and output sampling rate to detect
+   * aacplus stream */
+  GST_OMX_INIT_STRUCT (&aac_param);
+  aac_param.nPortIndex = dec->dec_in_port->index;
+  err =
+      gst_omx_component_get_parameter (dec->dec, OMX_IndexParamAudioAac,
+      &aac_param);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (dec, "Failed to get AAC parameters: %s (0x%08x)\
+    Can not detect input is aacplus or not", gst_omx_error_to_string (err), err);
+    goto done;
+  }
+  GST_OMX_INIT_STRUCT (&pcm_param);
+  pcm_param.nPortIndex = dec->dec_out_port->index;
+  err =
+      gst_omx_component_get_parameter (dec->dec, OMX_IndexParamAudioPcm,
+      &pcm_param);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (dec, "Failed to get PCM parameters: %s (0x%08x)\
+    Can not detect input is aacplus or not", gst_omx_error_to_string (err), err);
+    goto done;
+  }
+  if (pcm_param.nSamplingRate == (2 * aac_param.nSampleRate)) {
+    GST_DEBUG_OBJECT (dec, "Decoding for aacplus");
+    GST_OMX_AAC_DEC (dec)->spf = 2048;
+  }
+done:
   return GST_OMX_AAC_DEC (dec)->spf;
 }
 
