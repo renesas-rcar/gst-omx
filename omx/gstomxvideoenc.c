@@ -38,6 +38,13 @@
 #include "OMXR_Extension_vecmn.h"
 #endif
 #include "gstomxbufferpool.h"
+#ifdef HAVE_MMNGRBUF
+#include "mmngr_buf_user_public.h"
+#endif
+#ifdef HAVE_VIDEOR_EXT
+#include "OMXR_Extension_video.h"
+#endif
+#include "gst/allocators/gstdmabuf.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
@@ -90,6 +97,20 @@ gst_omx_video_enc_get_scantype (void)
   return qtype;
 }
 
+/* Used in dmabuf mode */
+struct _GstOMXVideoEncPrivate
+{
+  /* Array contain extension address */
+  GArray *extaddr_array;
+  /* Array contain fd got from GstBuffer */
+  GArray *fd_array;
+  /* Array contain address corresponding with fd */
+  GArray *addr_array;
+  /* Array contain id when using mmngrbuf to import fd */
+  GArray *id_array;
+  /* Flag to notify received full fd from upstream */
+  gboolean full_fd;
+};
 
 /* prototypes */
 static void gst_omx_video_enc_finalize (GObject * object);
@@ -132,7 +153,8 @@ enum
   PROP_QUANT_P_FRAMES,
   PROP_QUANT_B_FRAMES,
   PROP_SCAN_TYPE,
-  PROP_NO_COPY
+  PROP_NO_COPY,
+  PROP_USE_DMABUF
 };
 
 /* FIXME: Better defaults */
@@ -161,6 +183,7 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
   GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
   GstVideoEncoderClass *video_encoder_class = GST_VIDEO_ENCODER_CLASS (klass);
 
+  g_type_class_add_private (klass, sizeof (GstOMXVideoEncPrivate));
 
   gobject_class->finalize = gst_omx_video_enc_finalize;
   gobject_class->set_property = gst_omx_video_enc_set_property;
@@ -213,6 +236,11 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
           "Whether or not to share input buffer (userptr) with upstream element",
           FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_USE_DMABUF,
+      g_param_spec_boolean ("use-dmabuf", "Use dmabuf method",
+          "Whether or not to use dmabuf method",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_enc_change_state);
@@ -250,6 +278,18 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->quant_b_frames = GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
   self->scan_type = GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT;
   self->no_copy = FALSE;
+  self->use_dmabuf = FALSE;
+  self->priv =
+      G_TYPE_INSTANCE_GET_PRIVATE (self, GST_TYPE_OMX_VIDEO_ENC,
+      GstOMXVideoEncPrivate);
+  self->priv->fd_array = g_array_new (FALSE, FALSE, sizeof (gint));
+  self->priv->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
+  self->priv->addr_array = g_array_new (FALSE, FALSE, sizeof (guint));
+#ifdef HAVE_VIDEOR_EXT
+  self->priv->extaddr_array =
+      g_array_new (FALSE, FALSE, sizeof (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE));
+#endif
+  self->priv->full_fd = FALSE;
 
   g_mutex_init (&self->drain_lock);
   g_cond_init (&self->drain_cond);
@@ -485,6 +525,20 @@ gst_omx_video_enc_finalize (GObject * object)
 
   g_mutex_clear (&self->drain_lock);
   g_cond_clear (&self->drain_cond);
+#ifdef HAVE_MMNGRBUF
+  if (self->priv->id_array->len > 0) {
+    gint i;
+    for (i = 0; i < self->priv->id_array->len; i++)
+      mmngr_import_end_in_user_ext (g_array_index (self->priv->id_array, gint,
+              i));
+  }
+#endif
+  g_array_free (self->priv->fd_array, TRUE);
+  g_array_free (self->priv->addr_array, TRUE);
+  g_array_free (self->priv->id_array, TRUE);
+#ifdef HAVE_VIDEOR_EXT
+  g_array_free (self->priv->extaddr_array, TRUE);
+#endif
 
   G_OBJECT_CLASS (gst_omx_video_enc_parent_class)->finalize (object);
 }
@@ -532,6 +586,9 @@ gst_omx_video_enc_set_property (GObject * object, guint prop_id,
     case PROP_NO_COPY:
       self->no_copy = g_value_get_boolean (value);
       break;
+    case PROP_USE_DMABUF:
+      self->use_dmabuf = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -565,6 +622,9 @@ gst_omx_video_enc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_NO_COPY:
       g_value_set_boolean (value, self->no_copy);
+      break;
+    case PROP_USE_DMABUF:
+      g_value_set_boolean (value, self->use_dmabuf);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1200,6 +1260,25 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
       g_assert_not_reached ();
   }
 
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOR_EXT)
+  if (self->use_dmabuf) {
+    switch (port_def.format.video.eColorFormat) {
+      case OMX_COLOR_FormatYUV420Planar:
+        port_def.format.video.eColorFormat =
+            OMX_COLOR_FormatYUV420PlanarMultiPlane;
+        break;
+      case OMX_COLOR_FormatYUV420SemiPlanar:
+        port_def.format.video.eColorFormat =
+            OMX_COLOR_FormatYUV420SemiPlanarMultiPlane;
+        break;
+      default:
+        GST_ERROR_OBJECT (self, "Unsupported dmabuf mode for this format");
+        return FALSE;
+        break;
+    }
+  }
+#endif
+
   if (info->fps_n == 0) {
     port_def.format.video.xFramerate = 0;
   } else {
@@ -1332,9 +1411,42 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
               OMX_StateIdle) != OMX_ErrorNone)
         return FALSE;
 
-      /* Need to allocate buffers to reach Idle state */
-      if (gst_omx_port_allocate_buffers (self->enc_in_port) != OMX_ErrorNone)
+      if (self->use_dmabuf) {
+#ifdef HAVE_VIDEOR_EXT
+        OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE ext_addr;
+        const GList *addr = NULL;
+        gint i;
+
+        ext_addr.nSize = sizeof (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE);
+        memset (ext_addr.pvVirtAddr, 0, sizeof (ext_addr.pvVirtAddr));
+        memset (ext_addr.u32HwipAddr, 0, sizeof (ext_addr.u32HwipAddr));
+        memset (ext_addr.u32AllocateSize, 0, sizeof (ext_addr.u32AllocateSize));
+
+        for (i = 0; i < port_def.nBufferCountActual; i++)
+          g_array_append_val (self->priv->extaddr_array, ext_addr);
+
+        for (i = 0; i < self->priv->extaddr_array->len; i++)
+          addr =
+              g_list_append ((GList *) addr,
+              (gpointer) & g_array_index (self->priv->extaddr_array,
+                  OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE, i));
+        if (gst_omx_port_use_buffers (self->enc_in_port, addr) != OMX_ErrorNone) {
+          GST_ERROR_OBJECT (self,
+              ("Fail to allocate OMXBuffer by using OMX_UseBuffer"));
+          g_list_free ((GList *) addr);
+          return FALSE;
+        }
+        g_list_free ((GList *) addr);
+#else
+        GST_ERROR_OBJECT (self,
+            ("dmabuf mode is invalid now due to MC does not support extension address"));
         return FALSE;
+#endif
+      } else {
+        /* Need to allocate buffers to reach Idle state */
+        if (gst_omx_port_allocate_buffers (self->enc_in_port) != OMX_ErrorNone)
+          return FALSE;
+      }
       if (gst_omx_port_allocate_buffers (self->enc_out_port) != OMX_ErrorNone)
         return FALSE;
     }
@@ -1594,6 +1706,10 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
   GstOMXPort *port;
   GstOMXBuffer *buf;
   OMX_ERRORTYPE err;
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+  /* Physical address use to check in dmabuf mode */
+  guint phys_addr[GST_VIDEO_MAX_PLANES] = { 0, };
+#endif
 
   self = GST_OMX_VIDEO_ENC (encoder);
 
@@ -1605,6 +1721,81 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
   }
 
   port = self->enc_in_port;
+
+  if (self->use_dmabuf) {
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+    guint n_mem;
+    GstMemory *mem;
+    gint fd[GST_VIDEO_MAX_PLANES];
+    guint tmp_addr[GST_VIDEO_MAX_PLANES];
+    gint i;
+
+    n_mem = gst_buffer_n_memory (frame->input_buffer);
+    for (i = 0; i < n_mem; i++) {
+      mem = gst_buffer_peek_memory (frame->input_buffer, i);
+      if (gst_is_dmabuf_memory (mem) == TRUE) {
+        fd[i] = gst_dmabuf_memory_get_fd (mem);
+        /* Check receiving fd is full or not */
+        if (self->priv->fd_array->len > 0) {
+          gint j;
+          for (j = 0; j < self->priv->fd_array->len; j++) {
+            if (fd[i] == g_array_index (self->priv->fd_array, gint, j)) {
+              if (self->priv->full_fd == FALSE)
+                self->priv->full_fd = TRUE;
+              phys_addr[i] = g_array_index (self->priv->addr_array, guint, j);
+              break;
+            }
+          }
+
+          if (phys_addr[0] == 0)
+            /* Have not receive full fd */
+            self->priv->full_fd = FALSE;
+          else if (self->priv->full_fd == TRUE) {
+            GST_DEBUG_OBJECT (self,
+                "Got physical top address of Y plane from array");
+            break;
+          }
+        }
+        /* If have not received full buffer, convert it to physical
+         * address and add to array to prepare for reallocate */
+        if (self->priv->full_fd == FALSE) {
+          gint id;
+          gsize size;
+          gint ret;
+
+          ret =
+              mmngr_import_start_in_user_ext (&id, &size, &tmp_addr[i], fd[i],
+              NULL);
+          if (ret != R_MM_OK) {
+            GST_ERROR_OBJECT (self, "Fail to import dmabuf fd");
+            gst_video_codec_frame_unref (frame);
+            return GST_FLOW_ERROR;
+          }
+          if (i == 0)
+            g_array_append_val (self->priv->fd_array, fd[i]);
+          g_array_append_val (self->priv->id_array, id);
+
+          if (self->priv->fd_array->len > port->port_def.nBufferCountActual) {
+            GST_ERROR_OBJECT (self,
+                "Buffer out of guarantee of OMX MC, received %d, guarantee %d",
+                self->priv->fd_array->len, port->port_def.nBufferCountActual);
+            gst_video_codec_frame_unref (frame);
+            return GST_FLOW_ERROR;
+          }
+
+          phys_addr[i] = tmp_addr[i];
+          GST_DEBUG_OBJECT (self, "Got physical address 0x%x at fd %d",
+              phys_addr[i], fd[i]);
+        }
+      } else {
+        GST_ERROR_OBJECT (self, "GstBuffer does not contain dmabuf memory\
+            Can not use dmabuf mode");
+        gst_video_codec_frame_unref (frame);
+        return GST_FLOW_ERROR;
+      }
+    }
+#endif
+  }
 
   while (acq_ret != GST_OMX_ACQUIRE_BUFFER_OK) {
     GstClockTime timestamp, duration;
@@ -1765,6 +1956,45 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
         buf->omx_buf->nFilledLen = in_info.size;
         gst_buffer_unmap (frame->input_buffer, &in_info);
       }
+    } else if (self->use_dmabuf) {
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+      OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *ext_addr;
+      ext_addr = (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *) buf->omx_buf->pBuffer;
+      if (self->priv->full_fd == FALSE) {
+        if (ext_addr->u32HwipAddr[0] == 0) {
+          ext_addr->u32HwipAddr[0] = phys_addr[0];
+          g_array_append_val (self->priv->addr_array, phys_addr[0]);
+          GST_DEBUG_OBJECT (self,
+              "Updated phys_addr = 0x%x for Y plane", phys_addr[0]);
+        } else {
+          g_queue_push_tail (&port->pending_buffers, buf);
+          acq_ret = GST_OMX_ACQUIRE_BUFFER_ERROR;
+          continue;
+        }
+        if (ext_addr->u32HwipAddr[1] == 0 && phys_addr[1] != 0) {
+          ext_addr->u32HwipAddr[1] = phys_addr[1];
+          GST_DEBUG_OBJECT (self,
+              "Updated phys_addr = 0x%x for U/UV plane", phys_addr[1]);
+        }
+        if (ext_addr->u32HwipAddr[2] == 0 && phys_addr[2] != 0) {
+          ext_addr->u32HwipAddr[2] = phys_addr[2];
+          GST_DEBUG_OBJECT (self,
+              "Updated phys_addr = 0x%x for V plane", phys_addr[2]);
+        }
+      } else {
+        /* Currently, phys_addr[0] is address of an element in
+         * extaddr_array */
+        if (ext_addr->u32HwipAddr[0] != phys_addr[0]) {
+          g_queue_push_tail (&port->pending_buffers, buf);
+          acq_ret = GST_OMX_ACQUIRE_BUFFER_ERROR;
+          continue;
+        }
+        GST_DEBUG_OBJECT (self,
+            "Got OMXBuffer have HW address 0x%x match with target input area 0x%x",
+            ext_addr->u32HwipAddr[0], phys_addr[0]);
+      }
+      buf->omx_buf->nFilledLen = port->port_def.nBufferSize;
+#endif
     } else {
       /* Copy the buffer content in chunks of size as requested
        * by the port */
