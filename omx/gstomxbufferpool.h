@@ -84,6 +84,8 @@ struct _GstOMXBufferPool
   /* Array use to contain dma_id. It is used in export_end dmabuf area */
   GArray *id_array;
 #endif
+  /* Used during acquire for input port */
+  gint enc_buffer_index;
 };
 
 struct _GstOMXBufferPoolClass
