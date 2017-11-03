@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -51,6 +52,8 @@ struct _GstOMXH264Enc
 #endif
   guint32 periodicty_idr;
   guint32 interval_intraframes;
+  /* Set TRUE in case connect omxh264enc to omxh264dec directly */
+  gboolean use_incaps_header;
 
   GList *headers;
 };

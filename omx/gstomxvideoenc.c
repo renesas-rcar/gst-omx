@@ -649,6 +649,8 @@ gst_omx_video_enc_handle_output_frame (GstOMXVideoEnc * self, GstOMXPort * port,
       gst_video_codec_frame_unref (frame);
       return GST_FLOW_NOT_NEGOTIATED;
     }
+    /* Unref the frame when finished handling */
+    gst_video_codec_frame_unref (frame);
     flow_ret = GST_FLOW_OK;
   } else if (buf->omx_buf->nFilledLen > 0) {
     GstBuffer *outbuf;
