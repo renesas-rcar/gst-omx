@@ -45,6 +45,7 @@ G_BEGIN_DECLS
 
 typedef struct _GstOMXVideoEnc GstOMXVideoEnc;
 typedef struct _GstOMXVideoEncClass GstOMXVideoEncClass;
+typedef struct _GstOMXVideoEncPrivate GstOMXVideoEncPrivate;
 
 struct _GstOMXVideoEnc
 {
@@ -78,6 +79,9 @@ struct _GstOMXVideoEnc
   guint32 scan_type;
   /* TRUE to share buffers (userptr) to upstream */
   gboolean no_copy;
+  /* TRUE to receive dmabuf fd from upstream */
+  gboolean use_dmabuf;
+  GstOMXVideoEncPrivate *priv;
 
   GstFlowReturn downstream_flow_ret;
 };
