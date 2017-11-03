@@ -628,22 +628,12 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
     goto done;
   }
 
-  /* Same strides and everything */
-  if (gst_buffer_get_size (outbuf) == inbuf->omx_buf->nFilledLen) {
-    GstMapInfo map = GST_MAP_INFO_INIT;
-
-    if (!gst_buffer_map (outbuf, &map, GST_MAP_WRITE)) {
-      GST_ERROR_OBJECT (self, "Failed to map output buffer");
-      goto done;
-    }
-
-    memcpy (map.data,
-        inbuf->omx_buf->pBuffer + inbuf->omx_buf->nOffset,
-        inbuf->omx_buf->nFilledLen);
-    gst_buffer_unmap (outbuf, &map);
-    ret = TRUE;
-    goto done;
-  }
+  /* Try using gst_video_frame_map() before use gst_buffer_map() because
+   * gst_buffer_map() could return the different pointer in buffers
+   * received from downstream if downstream propose unwritable memory
+   * or multiple seperated blocks, gst_buffer_map() can create a new allocation.
+   * It is safety to use gst_video_frame_map() for all cases instead.
+   */
 
   /* Different strides */
   if (gst_video_frame_map (&frame, vinfo, outbuf, GST_MAP_WRITE)) {
@@ -737,8 +727,25 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
     gst_video_frame_unmap (&frame);
     ret = TRUE;
   } else {
-    GST_ERROR_OBJECT (self, "Can't map output buffer to frame");
-    goto done;
+    GST_DEBUG_OBJECT (self,
+        "Can't map output buffer to frame, try with gst_buffer_map");
+    /* Try using gst_buffer_map() if gst_video_frame_map() fail */
+    /* Same strides and everything */
+    if (gst_buffer_get_size (outbuf) == inbuf->omx_buf->nFilledLen) {
+      GstMapInfo map = GST_MAP_INFO_INIT;
+
+      if (!gst_buffer_map (outbuf, &map, GST_MAP_WRITE)) {
+        GST_ERROR_OBJECT (self, "Failed to map output buffer");
+        goto done;
+      }
+
+      memcpy (map.data,
+          inbuf->omx_buf->pBuffer + inbuf->omx_buf->nOffset,
+          inbuf->omx_buf->nFilledLen);
+      gst_buffer_unmap (outbuf, &map);
+      ret = TRUE;
+      goto done;
+    }
   }
 
 done:
