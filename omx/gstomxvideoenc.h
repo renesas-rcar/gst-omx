@@ -107,6 +107,7 @@ struct _GstOMXVideoEnc
   guint32 long_term_freq;
   guint32 look_ahead;
 #endif
+  GList *headers;
 
   guint32 default_target_bitrate;
 
