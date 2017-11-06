@@ -121,6 +121,7 @@ struct _GstOMXVideoEnc
   gboolean dependent_slice;
   gint default_roi_quality;
 #endif
+  GList *headers;
 
   GstFlowReturn downstream_flow_ret;
 

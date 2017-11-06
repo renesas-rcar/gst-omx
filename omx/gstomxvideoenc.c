@@ -587,6 +587,7 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->dependent_slice = GST_OMX_VIDEO_ENC_DEPENDENT_SLICE_DEFAULT;
   self->default_roi_quality = GST_OMX_VIDEO_ENC_DEFAULT_ROI_QUALITY;
 #endif
+  self->headers = NULL;
 
   g_mutex_init (&self->drain_lock);
   g_cond_init (&self->drain_cond);
@@ -1445,10 +1446,37 @@ gst_omx_video_enc_handle_output_frame (GstOMXVideoEnc * self, GstOMXPort * port,
     GST_DEBUG_OBJECT (self, "Handling output data");
 
     if (buf->omx_buf->nFilledLen > 0) {
-      outbuf = gst_buffer_new_and_alloc (buf->omx_buf->nFilledLen);
+      guint hdrs_size = 0;
+      if (self->headers) {
+        GList *tmp;
+        for (tmp = self->headers; tmp; tmp = tmp->next) {
+          GstBuffer *tmpbuf = GST_BUFFER (tmp->data);
+
+          hdrs_size += gst_buffer_get_size (tmpbuf);
+        }
+      }
+      outbuf = gst_buffer_new_and_alloc (buf->omx_buf->nFilledLen + hdrs_size);
 
       gst_buffer_map (outbuf, &map, GST_MAP_WRITE);
-      memcpy (map.data,
+      if (self->headers) {
+        /* When OMX send headers in separated buffers, merge these headers
+         * with data frame to created completed frame which satisfies with
+         * elements have alignment=au */
+        GList *tmp;
+        guint size = 0;
+        for (tmp = self->headers; tmp; tmp = tmp->next) {
+          GstBuffer *tmpbuf = GST_BUFFER (tmp->data);
+          GstMapInfo info;
+
+          gst_buffer_map (tmpbuf, &info, GST_MAP_READ);
+          memcpy (map.data + size, info.data, gst_buffer_get_size (tmpbuf));
+          size += gst_buffer_get_size (tmpbuf);
+          gst_buffer_unmap (tmpbuf, &info);
+        }
+        g_list_free_full (self->headers, (GDestroyNotify) gst_buffer_unref);
+        self->headers = NULL;
+      }
+      memcpy (map.data + hdrs_size,
           buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
           buf->omx_buf->nFilledLen);
       gst_buffer_unmap (outbuf, &map);
