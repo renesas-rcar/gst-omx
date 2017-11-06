@@ -82,6 +82,7 @@ struct _GstOMXVideoEnc
   /* TRUE to receive dmabuf fd from upstream */
   gboolean use_dmabuf;
   GstOMXVideoEncPrivate *priv;
+  GList *headers;
 
   GstFlowReturn downstream_flow_ret;
 };
