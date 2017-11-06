@@ -954,7 +954,8 @@ gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc * enc, GstOMXPort * port,
       return GST_FLOW_OK;
     }
   } else if (self->headers) {
-    gst_video_encoder_set_headers (GST_VIDEO_ENCODER (self), self->headers);
+    /* When alignment=au, headers should be sent with data frame */
+    enc->headers = self->headers;
     self->headers = NULL;
   }
 
