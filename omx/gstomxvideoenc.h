@@ -122,6 +122,7 @@ struct _GstOMXVideoEnc
   gboolean dependent_slice;
   gint default_roi_quality;
 #endif
+  GList *headers;
 
   guint32 default_target_bitrate;
 
