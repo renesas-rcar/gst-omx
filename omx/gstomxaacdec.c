@@ -310,10 +310,13 @@ gst_omx_aac_dec_get_samples_per_frame (GstOMXAudioDec * dec, GstOMXPort * port)
     Can not detect input is aacplus or not", gst_omx_error_to_string (err), err);
     goto done;
   }
-  if (pcm_param.nSamplingRate == (2 * aac_param.nSampleRate)) {
-    GST_DEBUG_OBJECT (dec, "Decoding for aacplus");
+  if (pcm_param.nSamplingRate == (2 * aac_param.nSampleRate))
     GST_OMX_AAC_DEC (dec)->spf = 2048;
-  }
+  else
+    GST_OMX_AAC_DEC (dec)->spf = 1024;
+
+  GST_DEBUG_OBJECT (dec, "Decoding with spf=%d", GST_OMX_AAC_DEC (dec)->spf);
+
 done:
   return GST_OMX_AAC_DEC (dec)->spf;
 }
