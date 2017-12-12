@@ -37,6 +37,7 @@
 #include "gstomxh263dec.h"
 #include "gstomxh265dec.h"
 #include "gstomxvp8dec.h"
+#include "gstomxvp9dec.h"
 #include "gstomxtheoradec.h"
 #include "gstomxwmvdec.h"
 #include "gstomxmpeg4videoenc.h"
@@ -2570,7 +2571,8 @@ static const GGetTypeFunction types[] = {
 #ifdef HAVE_HEVC
       , gst_omx_h265_enc_get_type, gst_omx_h265_dec_get_type
 #endif
-  , gst_omx_wma_dec_get_type
+  , gst_omx_wma_dec_get_type,
+  gst_omx_vp9_dec_get_type
 };
 
 struct TypeOffest
