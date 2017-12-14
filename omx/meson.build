@@ -52,6 +52,7 @@ if gstgl_dep.found()
 endif
 
 if omx_target == 'rcar'
+  omx_sources += 'gstomxh265dec.c'
   if have_mmngrbuf
     optional_deps += lib_mmngrbuf
     if have_exvdcmn
