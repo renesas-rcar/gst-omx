@@ -41,6 +41,7 @@ libgstomx_la_SOURCES = \
 	$(THEORA_C_FILES) \
 	$(H265_C_FILES) \
 	gstomxmpeg4videoenc.c \
+	gstomxvp8enc.c \
 	gstomxh264enc.c \
 	gstomxh263enc.c \
 	gstomxaacdec.c \
@@ -73,6 +74,7 @@ noinst_HEADERS = \
 	$(THEORA_H_FILES) \
 	$(H265_H_FILES) \
 	gstomxmpeg4videoenc.h \
+	gstomxvp8enc.h \
 	gstomxh264enc.h \
 	gstomxh263enc.h \
 	gstomxaacdec.h \

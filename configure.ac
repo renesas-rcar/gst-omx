@@ -389,6 +389,12 @@ AC_CHECK_HEADER([OMXR_Extension_vp9d.h],
            [],
            [AC_INCLUDES_DEFAULT])
 
+dnl check OMXR_Extension_vp8e.h
+AC_CHECK_HEADER([OMXR_Extension_vp8e.h],
+           [AC_DEFINE(HAVE_VP8ENC_EXT, 1, [Define if you have OMXR_Extension_vp8e.h header])],
+           [],
+           [AC_INCLUDES_DEFAULT])
+
 dnl check OMXR_Extension_aapd.h
 AC_CHECK_HEADER([OMXR_Extension_aapd.h],
            [AC_DEFINE(HAVE_AACDEC_EXT, 1, [Define if you have OMXR_Extension_aapd.h header])],
