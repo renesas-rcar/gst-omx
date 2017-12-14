@@ -29,6 +29,7 @@ libgstomx_la_SOURCES = \
 	$(VP8_C_FILES) \
 	$(THEORA_C_FILES) \
 	gstomxmpeg4videoenc.c \
+	gstomxvp8enc.c \
 	gstomxh264enc.c \
 	gstomxh263enc.c \
 	gstomxaacdec.c \
@@ -59,6 +60,7 @@ noinst_HEADERS = \
 	$(VP8_H_FILES) \
 	$(THEORA_H_FILES) \
 	gstomxmpeg4videoenc.h \
+	gstomxvp8enc.h \
 	gstomxh264enc.h \
 	gstomxh263enc.h \
 	gstomxaacdec.h \
