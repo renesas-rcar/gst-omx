@@ -1,8 +1,8 @@
 plugin_LTLIBRARIES = libgstomx.la
 
 if HAVE_VP8
-VP8_C_FILES=gstomxvp8dec.c
-VP8_H_FILES=gstomxvp8dec.h
+VP8_C_FILES=gstomxvp8dec.c gstomxvp8enc.c
+VP8_H_FILES=gstomxvp8dec.h gstomxvp8enc.h
 endif
 
 if HAVE_THEORA
