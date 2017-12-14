@@ -41,6 +41,7 @@
 #include "gstomxwmvdec.h"
 #include "gstomxmpeg4videoenc.h"
 #include "gstomxh264enc.h"
+#include "gstomxvp8enc.h"
 #include "gstomxh263enc.h"
 #include "gstomxaacdec.h"
 #include "gstomxmp3dec.h"
@@ -2292,7 +2293,7 @@ static const GGetTypeFunction types[] = {
       , gst_omx_theora_dec_get_type
 #endif
       , gst_omx_h265_dec_get_type, gst_omx_wma_dec_get_type,
-  gst_omx_vp9_dec_get_type
+  gst_omx_vp9_dec_get_type, gst_omx_vp8_enc_get_type
 };
 
 struct TypeOffest
