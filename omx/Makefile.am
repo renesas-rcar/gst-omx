@@ -1,8 +1,8 @@
 plugin_LTLIBRARIES = libgstomx.la
 
 if HAVE_VP8
-VP8_C_FILES=gstomxvp8dec.c
-VP8_H_FILES=gstomxvp8dec.h
+VP8_C_FILES=gstomxvp8dec.c gstomxvp8enc.c
+VP8_H_FILES=gstomxvp8dec.h gstomxvp8enc.h
 endif
 
 if HAVE_THEORA
@@ -41,7 +41,6 @@ libgstomx_la_SOURCES = \
 	$(THEORA_C_FILES) \
 	$(H265_C_FILES) \
 	gstomxmpeg4videoenc.c \
-	gstomxvp8enc.c \
 	gstomxh264enc.c \
 	gstomxh263enc.c \
 	gstomxaacdec.c \
@@ -74,7 +73,6 @@ noinst_HEADERS = \
 	$(THEORA_H_FILES) \
 	$(H265_H_FILES) \
 	gstomxmpeg4videoenc.h \
-	gstomxvp8enc.h \
 	gstomxh264enc.h \
 	gstomxh263enc.h \
 	gstomxaacdec.h \
