@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -45,6 +45,7 @@
 #include "OMXR_Extension_video.h"
 #endif
 #include "gst/allocators/gstdmabuf.h"
+#include "gstomxh264enc.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
@@ -1365,6 +1366,25 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
       return FALSE;
     }
   }
+#ifdef USE_OMX_TARGET_RCAR
+  if (GST_IS_OMX_H264_ENC (self)) {
+    /* Increase number of buffer incase nBframe > 0 */
+    if ((GST_OMX_H264_ENC (self)->bframes != 0xffffffff) &&
+        (GST_OMX_H264_ENC (self)->bframes > 0)) {
+
+      gst_omx_port_get_port_definition (self->enc_in_port, &port_def);
+
+      /* FIXME: 4 is current estimation for increasement */
+      port_def.nBufferCountActual += 4;
+
+      if (gst_omx_port_update_port_definition (self->enc_in_port,
+              &port_def) != OMX_ErrorNone)
+        return FALSE;
+
+      gst_omx_port_get_port_definition (self->enc_in_port, &port_def);
+    }
+  }
+#endif
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
   if (gst_omx_port_update_port_definition (self->enc_out_port,
@@ -2198,8 +2218,10 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
   GstOMXVideoEnc *self;
 
   self = GST_OMX_VIDEO_ENC (encoder);
-  if (self->no_copy == TRUE) {
-    /* Allocate buffers and propose them to upstream */
+  if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
+    /* Allocate buffers and propose them to upstream.
+     * Current omxbufferpool doesn't create dmabuf buffer incase encoder.
+     * But propose it to notify to upstream number of buffers */
     GstCaps *caps;
     GstVideoInfo info;
     guint size;
