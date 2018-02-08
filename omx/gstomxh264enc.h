@@ -56,6 +56,9 @@ struct _GstOMXH264Enc
   gboolean constrained_intra_prediction;
   guint32 loop_filter_mode;
   guint32 ref_frames;
+#ifdef USE_OMX_TARGET_RCAR
+  gboolean send_eos;
+#endif
 
   GList *headers;
 };
