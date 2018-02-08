@@ -59,6 +59,9 @@ struct _GstOMXH264Enc
   /* Set TRUE in case connect omxh264enc to omxh264dec directly */
   gboolean use_incaps_header;
   guint32 refframes;
+#ifdef USE_OMX_TARGET_RCAR
+  gboolean send_eos;
+#endif
 
   GList *headers;
 };
