@@ -66,7 +66,10 @@ enum
   PROP_ENTROPY_MODE,
   PROP_CONSTRAINED_INTRA_PREDICTION,
   PROP_LOOP_FILTER_MODE,
-  PROP_REFFRAMES
+  PROP_REFFRAMES,
+#ifdef USE_OMX_TARGET_RCAR
+  PROP_SEND_EOS
+#endif
 };
 
 #ifdef USE_OMX_TARGET_RPI
@@ -79,6 +82,9 @@ enum
 #define GST_OMX_H264_VIDEO_ENC_CONSTRAINED_INTRA_PREDICTION_DEFAULT (FALSE)
 #define GST_OMX_H264_VIDEO_ENC_LOOP_FILTER_MODE_DEFAULT (0xffffffff)
 #define GST_OMX_H264_VIDEO_ENC_REFFRAMES_DEFAULT (0xffffffff)
+#ifdef USE_OMX_TARGET_RCAR
+#define GST_OMX_H264_VIDEO_ENC_SEND_EOS_DEFAULT      FALSE
+#endif
 
 /* class initialization */
 
@@ -221,6 +227,15 @@ gst_omx_h264_enc_class_init (GstOMXH264EncClass * klass)
           0, G_MAXUINT, GST_OMX_H264_VIDEO_ENC_REFFRAMES_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+#ifdef USE_OMX_TARGET_RCAR
+  g_object_class_install_property (gobject_class, PROP_SEND_EOS,
+      g_param_spec_boolean ("send-eos",
+          "Send EOS/EOF data to downstream",
+          "Send EOS/EOF data to downstream",
+          GST_OMX_H264_VIDEO_ENC_SEND_EOS_DEFAULT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+#endif
 
   basevideoenc_class->flush = gst_omx_h264_enc_flush;
   basevideoenc_class->stop = gst_omx_h264_enc_stop;
@@ -273,6 +288,11 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
     case PROP_REFFRAMES:
       self->refframes = g_value_get_uint (value);
       break;
+#ifdef USE_OMX_TARGET_RCAR
+    case PROP_SEND_EOS:
+      self->send_eos = g_value_get_boolean (value);
+      break;
+#endif
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -313,6 +333,11 @@ gst_omx_h264_enc_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_REFFRAMES:
       g_value_set_uint (value, self->refframes);
       break;
+#ifdef USE_OMX_TARGET_RCAR
+    case PROP_SEND_EOS:
+      g_value_set_boolean (value, self->send_eos);
+      break;
+#endif
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -336,6 +361,9 @@ gst_omx_h264_enc_init (GstOMXH264Enc * self)
       GST_OMX_H264_VIDEO_ENC_CONSTRAINED_INTRA_PREDICTION_DEFAULT;
   self->loop_filter_mode = GST_OMX_H264_VIDEO_ENC_LOOP_FILTER_MODE_DEFAULT;
   self->refframes = GST_OMX_H264_VIDEO_ENC_REFFRAMES_DEFAULT;
+#ifdef USE_OMX_TARGET_RCAR
+  self->send_eos = GST_OMX_H264_VIDEO_ENC_SEND_EOS_DEFAULT;
+#endif
 }
 
 static gboolean
