@@ -806,8 +806,16 @@ gst_omx_video_enc_handle_output_frame (GstOMXVideoEnc * self, GstOMXPort * port,
       flow_ret =
           gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (self), frame);
     } else {
-      GST_ERROR_OBJECT (self, "No corresponding frame found");
-      flow_ret = gst_pad_push (GST_VIDEO_ENCODER_SRC_PAD (self), outbuf);
+#ifdef USE_OMX_TARGET_RCAR
+      if (GST_IS_OMX_H264_ENC (self) && !GST_OMX_H264_ENC (self)->send_eos) {
+        GST_DEBUG_OBJECT (self, "Skip sending EOS/EOF data to downstream");
+        gst_buffer_unref (outbuf);
+      } else
+#endif
+      {
+        GST_ERROR_OBJECT (self, "No corresponding frame found");
+        flow_ret = gst_pad_push (GST_VIDEO_ENCODER_SRC_PAD (self), outbuf);
+      }
     }
   } else if (frame != NULL) {
     flow_ret = gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (self), frame);

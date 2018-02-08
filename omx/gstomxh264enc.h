@@ -56,6 +56,9 @@ struct _GstOMXH264Enc
   gboolean use_incaps_header;
   guint32 bframes;
   guint32 refframes;
+#ifdef USE_OMX_TARGET_RCAR
+  gboolean send_eos;
+#endif
 
   GList *headers;
 };
