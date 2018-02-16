@@ -202,7 +202,10 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
       self->use_incaps_header = g_value_get_boolean (value);
       break;
     case PROP_BFRAMES:
-      self->bframes = g_value_get_uint (value);
+      if (!GST_OMX_VIDEO_ENC (object)->no_copy)
+        self->bframes = g_value_get_uint (value);
+      else
+        GST_WARNING_OBJECT (self, "no-copy mode does not support for b-frame");
       break;
     case PROP_REFFRAMES:
       self->refframes = g_value_get_uint (value);
