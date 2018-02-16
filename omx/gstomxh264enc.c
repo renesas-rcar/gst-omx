@@ -282,7 +282,10 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
       self->interval_intraframes = g_value_get_uint (value);
       break;
     case PROP_B_FRAMES:
-      self->b_frames = g_value_get_uint (value);
+      if (!GST_OMX_VIDEO_ENC (object)->no_copy)
+        self->b_frames = g_value_get_uint (value);
+      else
+        GST_WARNING_OBJECT (self, "no-copy mode does not support for b-frame");
       break;
     case PROP_ENTROPY_MODE:
       self->entropy_mode = g_value_get_enum (value);
