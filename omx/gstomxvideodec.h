@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -93,6 +93,11 @@ struct _GstOMXVideoDec
   gboolean lossy_compress;
   /* TRUE when set_property() runs */
   gboolean has_set_property;
+  /* Set FALSE to disable crop as info of conf_win_left_offset and conf_win_top_offset */
+  gboolean enable_crop;
+  /* Values got from OMX_IndexConfigCommonOutputCrop */
+  gint left_offset;   /* Contain nLeft = conf_win_left_offset * SubWidthC */
+  gint top_offset;    /* Contain nTop = conf_win_top_offset * SubHeightC */
 };
 
 struct _GstOMXVideoDecClass
