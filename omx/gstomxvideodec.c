@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -99,7 +99,8 @@ enum
   PROP_NO_COPY,
   PROP_USE_DMABUF,
   PROP_NO_REORDER,
-  PROP_LOSSY_COMPRESS
+  PROP_LOSSY_COMPRESS,
+  PROP_ENABLE_CROP
 };
 
 #define GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT (5)
@@ -146,6 +147,9 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     case PROP_LOSSY_COMPRESS:
       self->lossy_compress = g_value_get_boolean (value);
       break;
+    case PROP_ENABLE_CROP:
+      self->enable_crop = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -175,6 +179,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
       break;
     case PROP_LOSSY_COMPRESS:
       g_value_set_boolean (value, self->lossy_compress);
+      break;
+    case PROP_ENABLE_CROP:
+      g_value_set_boolean (value, self->enable_crop);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -225,6 +232,12 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
           "Whether or not to use lossy image compression function",
           FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_ENABLE_CROP,
+      g_param_spec_boolean ("enable-crop",
+          "Enable cropping video as value of left_offset and top_offset",
+          "Whether or not to enable cropping if there is cropping information on SPS",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_dec_change_state);
@@ -272,6 +285,9 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
   self->no_reorder = FALSE;
   self->lossy_compress = FALSE;
   self->has_set_property = FALSE;
+  self->enable_crop = FALSE;
+  self->left_offset = 0;
+  self->top_offset = 0;
 
   gst_video_decoder_set_packetized (GST_VIDEO_DECODER (self), TRUE);
   gst_video_decoder_set_use_default_pad_acceptcaps (GST_VIDEO_DECODER_CAST
@@ -641,13 +657,24 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
   gboolean ret = FALSE;
   GstVideoFrame frame;
 
-  if (vinfo->width != port_def->format.video.nFrameWidth ||
-      vinfo->height != port_def->format.video.nFrameHeight) {
-    GST_ERROR_OBJECT (self, "Resolution do not match: port=%ux%u vinfo=%dx%d",
-        (guint) port_def->format.video.nFrameWidth,
-        (guint) port_def->format.video.nFrameHeight,
-        vinfo->width, vinfo->height);
-    goto done;
+  /* The resolution on port_def will be always different from video info
+   * incase crop is enable.
+   * Because the resolution on port_def is resolution of video before
+   * cropping. Resolution on info is resolution after cropping which
+   * updated when negotiate with purpose:let downstream display cropped
+   * video only.
+   * So, incase crop is enable, skip checking port_def's resolution and
+   * info's resolution.
+   */
+  if (!self->enable_crop) {
+    if (vinfo->width != port_def->format.video.nFrameWidth ||
+        vinfo->height != port_def->format.video.nFrameHeight) {
+      GST_ERROR_OBJECT (self, "Resolution do not match: port=%ux%u vinfo=%dx%d",
+          (guint) port_def->format.video.nFrameWidth,
+          (guint) port_def->format.video.nFrameHeight,
+          vinfo->width, vinfo->height);
+      goto done;
+    }
   }
 
   /* Try using gst_video_frame_map() before use gst_buffer_map() because
@@ -668,6 +695,10 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
         { GST_VIDEO_INFO_HEIGHT (vinfo), 0, };
     const guint8 *src;
     guint p;
+    /* Only support crop for NV12 and I420 */
+    gint crop_offset[GST_VIDEO_MAX_PLANES] = { 0, };
+    gint crop_top = self->top_offset;
+    gint crop_left = self->left_offset;
 
     switch (GST_VIDEO_INFO_FORMAT (vinfo)) {
       case GST_VIDEO_FORMAT_ABGR:
@@ -694,6 +725,10 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
         src_size[2] = (src_stride[1] * nslice) / 2;
         dst_width[2] = GST_VIDEO_INFO_WIDTH (vinfo) / 2;
         dst_height[2] = GST_VIDEO_INFO_HEIGHT (vinfo) / 2;
+        /* Calculate for crop */
+        crop_offset[0] = (src_stride[0] * crop_top) + crop_left;
+        crop_offset[1] = (src_stride[1] * (crop_top / 2)) + (crop_left / 2);
+        crop_offset[2] = crop_offset[1];
         break;
       case GST_VIDEO_FORMAT_NV12:
         dst_width[0] = GST_VIDEO_INFO_WIDTH (vinfo);
@@ -701,6 +736,9 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
         src_size[1] = src_stride[1] * nslice / 2;
         dst_width[1] = GST_VIDEO_INFO_WIDTH (vinfo);
         dst_height[1] = GST_VIDEO_INFO_HEIGHT (vinfo) / 2;
+        /* Calculate for crop */
+        crop_offset[0] = (src_stride[0] * crop_top) + crop_left;
+        crop_offset[1] = (src_stride[1] * (crop_top / 2)) + crop_left;
         break;
       case GST_VIDEO_FORMAT_NV16:
         dst_width[0] = GST_VIDEO_INFO_WIDTH (vinfo);
@@ -737,7 +775,7 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
       guint h;
 
       dst = GST_VIDEO_FRAME_PLANE_DATA (&frame, p);
-      data = src;
+      data = src + crop_offset[p];
       for (h = 0; h < dst_height[p]; h++) {
         memcpy (dst, data, dst_width[p]);
         dst += GST_VIDEO_FRAME_PLANE_STRIDE (&frame, p);
@@ -1811,6 +1849,30 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           gst_omx_port_release_buffer (port, buf);
         GST_VIDEO_DECODER_STREAM_UNLOCK (self);
         goto caps_failed;
+      }
+
+      if (self->enable_crop) {
+        /* Cropping video if cropping values are available */
+        OMX_CONFIG_RECTTYPE crop;
+        GST_OMX_INIT_STRUCT (&crop);
+
+        crop.nPortIndex = port->index;
+        err = gst_omx_component_get_config (self->dec,
+            OMX_IndexConfigCommonOutputCrop, &crop);
+        if (err == OMX_ErrorNone) {
+          if ((crop.nLeft != 0) || (crop.nTop != 0)) {
+            self->left_offset = crop.nLeft;
+            self->top_offset = crop.nTop;
+            port_def.format.video.nFrameWidth -= self->left_offset;
+            port_def.format.video.nFrameHeight -= self->top_offset;
+            GST_INFO_OBJECT (self, "Cropped left_offset = %d top_offset = %d "
+                "- display width = %d display height = %d", self->left_offset,
+                self->top_offset, port_def.format.video.nFrameWidth,
+                port_def.format.video.nFrameHeight);
+          }
+        } else {
+          GST_WARNING_OBJECT (self, "Fail to get cropping information");
+        }
       }
 
       GST_DEBUG_OBJECT (self,

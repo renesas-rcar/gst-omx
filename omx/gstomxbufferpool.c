@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -432,11 +432,6 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
   }
 
   g_ptr_array_add (self->buffers, new_buf);
-  gst_buffer_add_video_meta_full (new_buf, GST_VIDEO_FRAME_FLAG_NONE,
-      GST_VIDEO_INFO_FORMAT (&self->video_info),
-      GST_VIDEO_INFO_WIDTH (&self->video_info),
-      GST_VIDEO_INFO_HEIGHT (&self->video_info),
-      GST_VIDEO_INFO_N_PLANES (&self->video_info), offset, stride);
 
   return new_buf;
 }
@@ -492,6 +487,8 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     const guint nstride = pool->port->port_def.format.video.nStride;
     const guint nslice = pool->port->port_def.format.video.nSliceHeight;
     gsize offset[GST_VIDEO_MAX_PLANES] = { 0, };
+    /* Record offset before cropping */
+    gsize offset_default[GST_VIDEO_MAX_PLANES] = { 0, };
     gint stride[GST_VIDEO_MAX_PLANES] = { 0, };
     gint slice[GST_VIDEO_MAX_PLANES] = { 0, };
 
@@ -535,10 +532,10 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
       case GST_VIDEO_FORMAT_I420:
         stride[1] = nstride / 2;
         slice[1] = nslice / 2;
-        offset[1] = offset[0] + stride[0] * nslice;
+        offset[1] = offset_default[1] = offset[0] + stride[0] * nslice;
         stride[2] = nstride / 2;
         slice[2] = slice[1];
-        offset[2] = offset[1] + (stride[1] * nslice / 2);
+        offset[2] = offset_default[2] = offset[1] + (stride[1] * nslice / 2);
         break;
       case GST_VIDEO_FORMAT_NV12:
       case GST_VIDEO_FORMAT_NV12_10LE32:
@@ -546,11 +543,41 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
       case GST_VIDEO_FORMAT_NV16_10LE32:
         stride[1] = nstride;
         slice[1] = nslice / 2;
-        offset[1] = offset[0] + stride[0] * nslice;
+        offset[1] = offset_default[1] = offset[0] + stride[0] * nslice;
         break;
       default:
         g_assert_not_reached ();
         break;
+    }
+
+    /* Handle config_win offsets which got from codec data if any */
+    if (GST_IS_OMX_VIDEO_DEC (pool->element) &&
+        GST_OMX_VIDEO_DEC (pool->element)->enable_crop) {
+      /* Only support crop for NV12 and I420 */
+      gint crop_offset[GST_VIDEO_MAX_PLANES] = { 0, };
+      gint crop_top, crop_left;
+
+      crop_top = GST_OMX_VIDEO_DEC (pool->element)->top_offset;
+      crop_left = GST_OMX_VIDEO_DEC (pool->element)->left_offset;
+
+      switch (GST_VIDEO_INFO_FORMAT (&pool->video_info)) {
+        case GST_VIDEO_FORMAT_I420:
+          crop_offset[0] = (stride[0] * crop_top) + crop_left;
+          offset[0] += crop_offset[0];
+          crop_offset[1] = (stride[1] * (crop_top / 2)) + (crop_left / 2);
+          offset[1] += crop_offset[1];
+          crop_offset[2] = crop_offset[1];
+          offset[2] += crop_offset[2];
+          break;
+        case GST_VIDEO_FORMAT_NV12:
+          crop_offset[0] = (stride[0] * crop_top) + crop_left;
+          offset[0] += crop_offset[0];
+          crop_offset[1] = (stride[1] * (crop_top / 2)) + crop_left;
+          offset[1] += crop_offset[1];
+          break;
+        default:
+          break;
+      }
     }
 
     if (GST_IS_OMX_VIDEO_DEC (pool->element) &&
@@ -570,6 +597,13 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
         GST_ERROR_OBJECT (pool, "Can not create buffer contain dmabuf");
         return GST_FLOW_ERROR;
       }
+      /* Buffer contain dmabuf_fd of video frame already cropped. So do
+       * not set cropping offset on meta. Keep it as original */
+      gst_buffer_add_video_meta_full (buf, GST_VIDEO_FRAME_FLAG_NONE,
+          GST_VIDEO_INFO_FORMAT (&pool->video_info),
+          GST_VIDEO_INFO_WIDTH (&pool->video_info),
+          GST_VIDEO_INFO_HEIGHT (&pool->video_info),
+          GST_VIDEO_INFO_N_PLANES (&pool->video_info), offset_default, stride);
 #else
       GST_ELEMENT_ERROR (pool->element, STREAM, FAILED, (NULL),
           ("dmabuf mode is invalid now due to not have MMNGR_BUF or MC does not support getting physical address"));
