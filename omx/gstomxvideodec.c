@@ -53,6 +53,7 @@
 #include "gstomxvideo.h"
 #include "gstomxvideodec.h"
 #include "gstomxwmvdec.h"
+#include "gstomxvp9dec.h"
 #ifdef HAVE_VIDEODEC_EXT
 #include "OMXR_Extension_vdcmn.h"
 #endif
@@ -2270,10 +2271,17 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     OMX_PARAM_PORTDEFINITIONTYPE out_port_def;
 
     /* Initialize default output allocation align for page size
-     * Choose 128x128 because some decoders support 80 as minimum setting.*/
+     * Choose 192x192 for VP9 Decoder and 128x128 for other Decoders
+     * because they are close to minimum setting 192 (VP9) and 80 (others)*/
     gst_omx_port_get_port_definition (self->dec_out_port, &out_port_def);
-    out_port_def.format.video.nStride = 128;
-    out_port_def.format.video.nSliceHeight = 128;
+    if (GST_IS_OMX_VP9_DEC (self)) {
+      out_port_def.format.video.nStride = 192;
+      out_port_def.format.video.nSliceHeight = 192;
+    } else {
+      out_port_def.format.video.nStride = 128;
+      out_port_def.format.video.nSliceHeight = 128;
+    }
+
     if (gst_omx_port_update_port_definition (self->dec_out_port,
             &out_port_def) != OMX_ErrorNone)
       return FALSE;
