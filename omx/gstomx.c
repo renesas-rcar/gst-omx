@@ -249,6 +249,8 @@ gst_omx_buffer_reset (GstOMXBuffer * buf)
   GST_OMX_SET_TICKS (buf->omx_buf->nTimeStamp, G_GUINT64_CONSTANT (0));
 }
 
+static void gst_omx_buffer_unmap (GstOMXBuffer * buffer);
+
 /* NOTE: Call with comp->lock, comp->messages_lock will be used */
 static void
 gst_omx_component_handle_messages (GstOMXComponent * comp)
@@ -393,6 +395,8 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
 
         port = buf->port;
 
+        buf->used = FALSE;
+
         if (msg->content.buffer_done.empty) {
           /* Input buffer is empty again and can be used to contain new input */
           GST_LOG_OBJECT (port->comp->parent,
@@ -404,6 +408,9 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
            * valid anymore after the buffer was consumed
            */
           gst_omx_buffer_reset (buf);
+
+          /* Release and unmap the parent buffer, if any */
+          gst_omx_buffer_unmap (buf);
         } else {
           /* Output buffer contains output now or
            * the port was flushed */
@@ -415,8 +422,6 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
               && port->port_def.eDir == OMX_DirOutput)
             port->eos = TRUE;
         }
-
-        buf->used = FALSE;
 
         g_queue_push_tail (&port->pending_buffers, buf);
 
@@ -711,9 +716,6 @@ EmptyBufferDone (OMX_HANDLETYPE hComponent, OMX_PTR pAppData,
     GST_ERROR ("EmptyBufferDone on tunneled port");
     return OMX_ErrorBadParameter;
   }
-
-  /* Release and unmap the parent buffer, if any */
-  gst_omx_buffer_unmap (buf);
 
   comp = buf->port->comp;
 
