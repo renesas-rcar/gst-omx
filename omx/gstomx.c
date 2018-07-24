@@ -777,6 +777,10 @@ FillBufferDone (OMX_HANDLETYPE hComponent, OMX_PTR pAppData,
 static OMX_CALLBACKTYPE callbacks =
     { EventHandler, EmptyBufferDone, FillBufferDone };
 
+GST_DEFINE_MINI_OBJECT_TYPE (GstOMXComponent, gst_omx_component);
+
+static void gst_omx_component_free (GstOMXComponent * comp);
+
 /* NOTE: Uses comp->lock and comp->messages_lock */
 GstOMXComponent *
 gst_omx_component_new (GstObject * parent, const gchar * core_name,
@@ -793,6 +797,10 @@ gst_omx_component_new (GstObject * parent, const gchar * core_name,
 
   comp = g_slice_new0 (GstOMXComponent);
   comp->core = core;
+
+  gst_mini_object_init (GST_MINI_OBJECT_CAST (comp), 0,
+      gst_omx_component_get_type (), NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_omx_component_free);
 
   if ((dot = g_strrstr (component_name, ".")))
     comp->name = g_strdup (dot + 1);
@@ -861,7 +869,7 @@ gst_omx_component_new (GstObject * parent, const gchar * core_name,
 }
 
 /* NOTE: Uses comp->messages_lock */
-void
+static void
 gst_omx_component_free (GstOMXComponent * comp)
 {
   gint i, n;
@@ -900,6 +908,23 @@ gst_omx_component_free (GstOMXComponent * comp)
   comp->name = NULL;
 
   g_slice_free (GstOMXComponent, comp);
+}
+
+GstOMXComponent *
+gst_omx_component_ref (GstOMXComponent * comp)
+{
+  g_return_val_if_fail (comp, NULL);
+
+  gst_mini_object_ref (GST_MINI_OBJECT_CAST (comp));
+  return comp;
+}
+
+void
+gst_omx_component_unref (GstOMXComponent * comp)
+{
+  g_return_if_fail (comp);
+
+  gst_mini_object_unref (GST_MINI_OBJECT_CAST (comp));
 }
 
 /* NOTE: Uses comp->lock and comp->messages_lock */
