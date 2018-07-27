@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -140,12 +140,12 @@ gst_omx_wmv_dec_prepare_frame (GstOMXVideoDec * dec, GstVideoCodecFrame * frame)
        * in case Simple/Main profile
        */
       if (!gst_buffer_map (dec->codec_data, &info, GST_MAP_READ)) {
-        GST_ERROR_OBJECT (dec, "Failed to create a gstbuffer mapping");
+        GST_ERROR_OBJECT (self, "Failed to create a gstbuffer mapping");
         return GST_FLOW_ERROR;
       }
       SeqHdrBuf = (guint32 *) g_malloc (SEQ_PARAM_BUF_SIZE);
       if (SeqHdrBuf == NULL) {
-        GST_ERROR_OBJECT (dec, "Failed to g_malloc");
+        GST_ERROR_OBJECT (self, "Failed to g_malloc");
         return GST_FLOW_ERROR;
       }
 
