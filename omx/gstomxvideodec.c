@@ -2674,6 +2674,7 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
 
       if (!gst_buffer_map (frame->input_buffer, &map, GST_MAP_READ)) {
         GST_ERROR_OBJECT (self, "Failed to create a GstBuffer mapping");
+        gst_video_codec_frame_unref (frame);
         return GST_FLOW_ERROR;
       }
       if (map.data[0] == 0x00 && map.data[1] == 0x00 && map.data[2] == 0x01
