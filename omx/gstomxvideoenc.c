@@ -579,17 +579,6 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->scan_type = GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT;
   self->no_copy = FALSE;
   self->use_dmabuf = FALSE;
-  self->priv =
-      G_TYPE_INSTANCE_GET_PRIVATE (self, GST_TYPE_OMX_VIDEO_ENC,
-      GstOMXVideoEncPrivate);
-  self->priv->fd_array = g_array_new (FALSE, FALSE, sizeof (gint));
-  self->priv->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
-  self->priv->addr_array = g_array_new (FALSE, FALSE, sizeof (guint));
-#ifdef HAVE_VIDEOR_EXT
-  self->priv->extaddr_array =
-      g_array_new (FALSE, FALSE, sizeof (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE));
-#endif
-  self->priv->full_fd = FALSE;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   self->qp_mode = GST_OMX_VIDEO_ENC_QP_MODE_DEFAULT;
   self->min_qp = GST_OMX_VIDEO_ENC_MIN_QP_DEFAULT;
@@ -1068,20 +1057,6 @@ gst_omx_video_enc_finalize (GObject * object)
 
   g_mutex_clear (&self->drain_lock);
   g_cond_clear (&self->drain_cond);
-#ifdef HAVE_MMNGRBUF
-  if (self->priv->id_array->len > 0) {
-    gint i;
-    for (i = 0; i < self->priv->id_array->len; i++)
-      mmngr_import_end_in_user_ext (g_array_index (self->priv->id_array, gint,
-              i));
-  }
-#endif
-  g_array_free (self->priv->fd_array, TRUE);
-  g_array_free (self->priv->addr_array, TRUE);
-  g_array_free (self->priv->id_array, TRUE);
-#ifdef HAVE_VIDEOR_EXT
-  g_array_free (self->priv->extaddr_array, TRUE);
-#endif
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   g_clear_pointer (&self->alg_roi_quality_enum_class, g_type_class_unref);
 #endif
@@ -1819,6 +1794,20 @@ gst_omx_video_enc_start (GstVideoEncoder * encoder)
 
   self->last_upstream_ts = 0;
   self->downstream_flow_ret = GST_FLOW_OK;
+  /* Prepare arrays to store dmabuf_fd, dmabuf_id and address for
+   * use-dmabuf mode's handling
+   */
+  self->priv =
+      G_TYPE_INSTANCE_GET_PRIVATE (self, GST_TYPE_OMX_VIDEO_ENC,
+      GstOMXVideoEncPrivate);
+  self->priv->fd_array = g_array_new (FALSE, FALSE, sizeof (gint));
+  self->priv->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
+  self->priv->addr_array = g_array_new (FALSE, FALSE, sizeof (guint));
+#ifdef HAVE_VIDEOR_EXT
+  self->priv->extaddr_array =
+      g_array_new (FALSE, FALSE, sizeof (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE));
+#endif
+  self->priv->full_fd = FALSE;
 
   return TRUE;
 }
@@ -1831,6 +1820,20 @@ gst_omx_video_enc_stop (GstVideoEncoder * encoder)
   self = GST_OMX_VIDEO_ENC (encoder);
 
   GST_DEBUG_OBJECT (self, "Stopping encoder");
+#ifdef HAVE_MMNGRBUF
+  if (self->priv->id_array->len > 0) {
+    gint i;
+    for (i = 0; i < self->priv->id_array->len; i++)
+      mmngr_import_end_in_user_ext (g_array_index (self->priv->id_array, gint,
+              i));
+  }
+#endif
+  g_array_free (self->priv->fd_array, TRUE);
+  g_array_free (self->priv->addr_array, TRUE);
+  g_array_free (self->priv->id_array, TRUE);
+#ifdef HAVE_VIDEOR_EXT
+  g_array_free (self->priv->extaddr_array, TRUE);
+#endif
 
   gst_omx_port_set_flushing (self->enc_in_port, 5 * GST_SECOND, TRUE);
   gst_omx_port_set_flushing (self->enc_out_port, 5 * GST_SECOND, TRUE);
