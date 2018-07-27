@@ -2275,6 +2275,9 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
           self->enc_in_port->port_def.nBufferCountActual,
           self->enc_in_port->port_def.nBufferCountActual);
       gst_buffer_pool_config_get_params (structure, &caps, NULL, &min, &max);
+
+      GST_INFO_OBJECT (self, "Updated buffer with min %d max %d", min, max);
+
       gst_buffer_pool_config_set_allocator (structure, allocator, &params);
 
       if (allocator)
