@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -27,6 +27,9 @@
 #ifdef HAVE_VP9DEC_EXT
 #include "OMXR_Extension_vp9d.h"
 #endif
+#ifdef HAVE_VIDEODEC_EXT
+#include "OMXR_Extension_vdcmn.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_vp9_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_vp9_dec_debug_category
@@ -36,6 +39,8 @@ static gboolean gst_omx_vp9_dec_is_format_change (GstOMXVideoDec * dec,
     GstOMXPort * port, GstVideoCodecState * state);
 static gboolean gst_omx_vp9_dec_set_format (GstOMXVideoDec * dec,
     GstOMXPort * port, GstVideoCodecState * state);
+static gboolean gst_omx_vp9_dec_handle_dynamic_change (GstOMXVideoDec
+    * self, GstOMXBuffer * buf);
 
 enum
 {
@@ -60,6 +65,8 @@ gst_omx_vp9_dec_class_init (GstOMXVP9DecClass * klass)
   videodec_class->is_format_change =
       GST_DEBUG_FUNCPTR (gst_omx_vp9_dec_is_format_change);
   videodec_class->set_format = GST_DEBUG_FUNCPTR (gst_omx_vp9_dec_set_format);
+  videodec_class->handle_dynamic_change =
+      GST_DEBUG_FUNCPTR (gst_omx_vp9_dec_handle_dynamic_change);
 
   videodec_class->cdata.default_sink_template_caps = "video/x-vp9, "
       "width=(int) [1,MAX], " "height=(int) [1,MAX]";
@@ -98,4 +105,29 @@ gst_omx_vp9_dec_set_format (GstOMXVideoDec * dec, GstOMXPort * port,
   ret = gst_omx_port_update_port_definition (port, &port_def) == OMX_ErrorNone;
 
   return ret;
+}
+
+static gboolean
+gst_omx_vp9_dec_handle_dynamic_change (GstOMXVideoDec * dec, GstOMXBuffer * buf)
+{
+#ifdef HAVE_VIDEODEC_EXT
+  OMXR_MC_VIDEO_DECODERESULTTYPE *decode_res =
+      (OMXR_MC_VIDEO_DECODERESULTTYPE *) buf->omx_buf->pOutputPortPrivate;
+
+  if (decode_res) {
+    dec->dynamic_width = (guint) decode_res->u32PictWidth;
+
+    dec->dynamic_height = (guint) decode_res->u32PictHeight;
+
+  } else {
+    /* Keep caps as current caps */
+    GstVideoCodecState *state;
+    state = gst_video_decoder_get_output_state (GST_VIDEO_DECODER (dec));
+    dec->dynamic_width = state->info.width;
+    dec->dynamic_height = state->info.height;
+    gst_video_codec_state_unref (state);
+  }
+#endif
+  return GST_OMX_VIDEO_DEC_CLASS
+      (gst_omx_vp9_dec_parent_class)->handle_dynamic_change (dec, buf);
 }
