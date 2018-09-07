@@ -1,7 +1,7 @@
 /*
  * Copyright 2014 Advanced Micro Devices, Inc.
  *   Author: Christian König <christian.koenig@amd.com>
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -91,6 +91,8 @@ struct _GstOMXBufferPool
 #ifdef HAVE_MMNGRBUF
   /* Array use to contain dma_id. It is used in export_end dmabuf area */
   GArray *id_array;
+  /* Array use to contain physical address. It is used in dynamic change, seeking case */
+  GArray *physadd_array;
 #endif
   /* Used during acquire for input port */
   gint enc_buffer_index;
