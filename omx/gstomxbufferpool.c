@@ -419,10 +419,23 @@ gst_omx_buffer_pool_create_buffer_contain_dmabuf (GstOMXBufferPool * self,
     guint phys_addr;
     GstMemory *mem;
 
-    OMXR_MC_VIDEO_DECODERESULTTYPE *decode_res =
-        (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->omx_buf->pOutputPortPrivate;
+    if (omx_buf->omx_buf->pOutputPortPrivate) {
+      OMXR_MC_VIDEO_DECODERESULTTYPE *decode_res =
+          (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->
+          omx_buf->pOutputPortPrivate;
 
-    phys_addr = (guintptr) decode_res->pvPhysImageAddressY + offset[i];
+      phys_addr = (guintptr) decode_res->pvPhysImageAddressY + offset[i];
+    }
+    /* Store physical address use for seeking in dynamic change */
+    if (!GST_OMX_VIDEO_DEC (self->element)->dynamic_change) {
+      g_array_append_val (self->physadd_array, phys_addr);
+    } else {
+      if (!omx_buf->omx_buf->pOutputPortPrivate) {
+        phys_addr =
+            (guintptr) g_array_index (self->physadd_array, guint,
+            ((2 * self->current_buffer_index) + i));
+      }
+    }
     /* Calculate offset between physical address and page boundary */
     page_offset[i] = phys_addr & (page_size - 1);
 
@@ -580,7 +593,7 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
         GST_OMX_VIDEO_DEC (pool->element)->use_dmabuf == TRUE &&
         (omx_buf->omx_buf->pOutputPortPrivate)) {
 #if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEODEC_EXT)
-      if (pool->allocator && GST_IS_OMX_MEMORY_ALLOCATOR (pool->allocator)) {
+      if (pool->allocator && !GST_IS_DMABUF_ALLOCATOR (pool->allocator)) {
         gst_object_unref (pool->allocator);
         pool->allocator = gst_dmabuf_allocator_new ();
       }
@@ -606,6 +619,43 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
       return GST_FLOW_ERROR;
 #endif
     } else {
+      if (GST_IS_OMX_VIDEO_DEC (pool->element) &&
+          GST_OMX_VIDEO_DEC (pool->element)->dynamic_change) {
+        if (pool->physadd_array->len ==
+            2 * pool->port->port_def.nBufferCountActual) {
+          if (pool->allocator && !GST_IS_DMABUF_ALLOCATOR (pool->allocator)) {
+            gst_object_unref (pool->allocator);
+            pool->allocator = gst_dmabuf_allocator_new ();
+          }
+          GST_DEBUG_OBJECT (pool, "DMABUF - Using %s allocator",
+              pool->allocator->mem_type);
+
+          buf = gst_omx_buffer_pool_create_buffer_contain_dmabuf (pool,
+              omx_buf, (gint *) (&stride), (gint *) (&slice),
+              (gsize *) (&offset));
+          if (!buf) {
+            GST_ERROR_OBJECT (pool, "Can not create buffer contain dmabuf");
+            return GST_FLOW_ERROR;
+          }
+          /* Buffer contain dmabuf_fd of video frame already cropped. So do
+           * not set cropping offset on meta. Keep it as original */
+          gst_buffer_add_video_meta_full (buf, GST_VIDEO_FRAME_FLAG_NONE,
+              GST_VIDEO_INFO_FORMAT (&pool->video_info),
+              GST_VIDEO_INFO_WIDTH (&pool->video_info),
+              GST_VIDEO_INFO_HEIGHT (&pool->video_info),
+              GST_VIDEO_INFO_N_PLANES (&pool->video_info), offset_default,
+              stride);
+          gst_mini_object_set_qdata (GST_MINI_OBJECT_CAST (buf),
+              gst_omx_buffer_data_quark, omx_buf, NULL);
+
+          *buffer = buf;
+
+          pool->current_buffer_index++;
+
+          return GST_FLOW_OK;
+        }
+      }
+
       if (pool->allocator && !GST_IS_OMX_MEMORY_ALLOCATOR (pool->allocator)) {
         gst_object_unref (pool->allocator);
         pool->allocator =
@@ -814,6 +864,10 @@ gst_omx_buffer_pool_finalize (GObject * object)
 {
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (object);
 
+#ifdef HAVE_MMNGRBUF
+  g_array_free (pool->physadd_array, TRUE);
+#endif
+
   if (pool->element)
     gst_object_unref (pool->element);
   pool->element = NULL;
@@ -861,7 +915,9 @@ gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 {
   pool->buffers = g_ptr_array_new ();
   pool->allocator = g_object_new (gst_omx_memory_allocator_get_type (), NULL);
-
+#ifdef HAVE_MMNGRBUF
+  pool->physadd_array = g_array_new (FALSE, FALSE, sizeof (guint));
+#endif
   pool->enc_buffer_index = 0;
 }
 
