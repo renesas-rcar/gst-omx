@@ -92,6 +92,10 @@ static void gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
 static void gst_omx_video_dec_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec);
+static gboolean gst_omx_video_dec_handle_dynamic_change (GstOMXVideoDec * self,
+    GstOMXBuffer * buf);
+static gboolean gst_omx_video_dec_handle_dynamic_change_default (GstOMXVideoDec
+    * self, GstOMXBuffer * buf);
 
 enum
 {
@@ -266,6 +270,8 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
       "video/x-raw, "
       "width = " GST_VIDEO_SIZE_RANGE ", "
       "height = " GST_VIDEO_SIZE_RANGE ", " "framerate = " GST_VIDEO_FPS_RANGE;
+  klass->handle_dynamic_change =
+      GST_DEBUG_FUNCPTR (gst_omx_video_dec_handle_dynamic_change_default);
 }
 
 static void
@@ -667,7 +673,10 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
    * So, incase crop is enable, skip checking port_def's resolution and
    * info's resolution.
    */
-  if (!self->enable_crop) {
+  if ((self->enable_crop) || (self->dynamic_change)) {
+    GST_DEBUG_OBJECT (self,
+        "Resolution will not match in cases of enable-crop and dynamic change in src pad");
+  } else {
     if (vinfo->width != port_def->format.video.nFrameWidth ||
         vinfo->height != port_def->format.video.nFrameHeight) {
       GST_ERROR_OBJECT (self, "Resolution do not match: port=%ux%u vinfo=%dx%d",
@@ -1916,6 +1925,12 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
   GST_DEBUG_OBJECT (self, "Size of output port buffer: 0x%08x",
       buf->omx_buf->nAllocLen);
 
+  /* Update caps based on dynamic changing */
+  if (!gst_omx_video_dec_handle_dynamic_change (self, buf)) {
+    gst_omx_port_release_buffer (port, buf);
+    goto caps_failed;
+  }
+
   /* This prevents a deadlock between the srcpad stream
    * lock and the videocodec stream lock, if ::reset()
    * is called at the wrong time
@@ -2239,6 +2254,9 @@ gst_omx_video_dec_start (GstVideoDecoder * decoder)
   self->last_upstream_ts = 0;
   self->downstream_flow_ret = GST_FLOW_OK;
   self->use_buffers = FALSE;
+  self->dynamic_width = 0;
+  self->dynamic_height = 0;
+  self->dynamic_change = FALSE;
 
   return TRUE;
 }
@@ -3636,6 +3654,7 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
       self->out_port_pool = NULL;
     } else {
       GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = FALSE;
+      GST_OMX_BUFFER_POOL (self->out_port_pool)->deactivated = FALSE;
     }
     if (update_pool)
       gst_query_set_nth_allocation_pool (query, 0, self->out_port_pool,
@@ -3665,5 +3684,113 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
     gst_object_unref (pool);
   }
 
+  return TRUE;
+}
+
+static gboolean
+gst_omx_video_dec_handle_dynamic_change (GstOMXVideoDec * self,
+    GstOMXBuffer * buf)
+{
+  GstOMXVideoDecClass *klass = GST_OMX_VIDEO_DEC_GET_CLASS (self);
+  gboolean ret = TRUE;
+
+  if (klass->handle_dynamic_change != NULL) {
+    ret = klass->handle_dynamic_change (self, buf);
+  }
+  return ret;
+}
+
+static gboolean
+gst_omx_video_dec_handle_dynamic_change_default (GstOMXVideoDec * self,
+    GstOMXBuffer * buf)
+{
+  GstVideoCodecState *state;
+  OMX_PARAM_PORTDEFINITIONTYPE port_def;
+  GstVideoFormat format;
+  GstOMXVideoDecClass *klass = GST_OMX_VIDEO_DEC_GET_CLASS (self);
+  gboolean have_change = FALSE;
+
+  GST_VIDEO_DECODER_STREAM_LOCK (self);
+
+  gst_omx_port_get_port_definition (self->dec_out_port, &port_def);
+  g_assert (port_def.format.video.eCompressionFormat == OMX_VIDEO_CodingUnused);
+
+  format =
+      gst_omx_video_get_format_from_omx (port_def.format.video.eColorFormat);
+
+  /* Fixme: Now, not care for framerate and pixel-aspect-ratio */
+  state = gst_video_decoder_get_output_state (GST_VIDEO_DECODER (self));
+
+  if ((!state) || ((format != GST_VIDEO_FORMAT_UNKNOWN)
+          && (format != state->info.finfo->format))) {
+    self->dynamic_change = TRUE;
+    have_change = TRUE;
+  }
+
+  if (self->dynamic_width == 0)
+    self->dynamic_width = port_def.format.video.nFrameWidth;
+
+  if ((state) && (self->dynamic_width != state->info.width)) {
+    self->dynamic_change = TRUE;
+    have_change = TRUE;
+  }
+
+  if (self->dynamic_height == 0)
+    self->dynamic_height = port_def.format.video.nFrameHeight;
+
+  if ((state) && (self->dynamic_height != state->info.height)) {
+    self->dynamic_change = TRUE;
+    have_change = TRUE;
+  }
+
+  /* Fixme: Not change caps in case enable-crop=true */
+  if ((have_change == TRUE) && (self->enable_crop == FALSE)) {
+
+    /* Deactivate omxbuffer pool to reconfigure when caps change */
+    if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
+      if (gst_buffer_pool_is_active (self->out_port_pool)) {
+        if (!gst_buffer_pool_set_active (self->out_port_pool, FALSE)) {
+          GST_ERROR_OBJECT (self,
+              "Fail to deactivate omxbufferpool in dynamic change");
+          gst_video_codec_state_unref (state);
+
+          GST_VIDEO_DECODER_STREAM_UNLOCK (self);
+          return FALSE;
+        }
+        GST_OMX_BUFFER_POOL (self->out_port_pool)->deactivated = TRUE;
+      }
+    }
+
+    GST_LOG_OBJECT (self, "Old caps: %" GST_PTR_FORMAT,
+        gst_pad_get_current_caps (GST_VIDEO_DECODER_SRC_PAD (self)));
+
+    /* Unref state got from gst_video_decoder_get_output_state() */
+    gst_video_codec_state_unref (state);
+    state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
+        format, self->dynamic_width, self->dynamic_height, self->input_state);
+    /* Take framerate and pixel-aspect-ratio from sinkpad caps */
+    if (klass->cdata.hacks & GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO) {
+      /* Set pixel-aspect-ratio is 1/1. It means that always keep
+       * original image when display   */
+      state->info.par_d = state->info.par_n;
+    }
+
+    if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
+      GST_ERROR_OBJECT (self, "Cannot re-negotiate with new output state");
+      gst_video_codec_state_unref (state);
+
+      GST_VIDEO_DECODER_STREAM_UNLOCK (self);
+      return FALSE;
+    }
+    GST_DEBUG_OBJECT (self, "New caps: %" GST_PTR_FORMAT,
+        gst_pad_get_current_caps (GST_VIDEO_DECODER_SRC_PAD (self)));
+  }
+  /* Reset for dynamic width and height */
+  self->dynamic_width = 0;
+  self->dynamic_height = 0;
+
+  gst_video_codec_state_unref (state);
+
+  GST_VIDEO_DECODER_STREAM_UNLOCK (self);
   return TRUE;
 }
