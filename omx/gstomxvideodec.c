@@ -3749,6 +3749,10 @@ gst_omx_video_dec_handle_dynamic_change_default (GstOMXVideoDec * self,
     /* Deactivate omxbuffer pool to reconfigure when caps change */
     if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
       if (gst_buffer_pool_is_active (self->out_port_pool)) {
+        GstQuery *query;
+        query = gst_query_new_drain ();
+        gst_pad_peer_query (GST_VIDEO_DECODER_SRC_PAD (self), query);
+        gst_query_unref (query);
         if (!gst_buffer_pool_set_active (self->out_port_pool, FALSE)) {
           GST_ERROR_OBJECT (self,
               "Fail to deactivate omxbufferpool in dynamic change");
