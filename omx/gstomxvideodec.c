@@ -83,11 +83,16 @@ static OMX_ERRORTYPE gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec *
     self);
 static OMX_ERRORTYPE gst_omx_video_dec_deallocate_output_buffers (GstOMXVideoDec
     * self);
+static void gst_omx_video_dec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec);
+static void gst_omx_video_dec_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec);
 
 enum
 {
   PROP_0,
   PROP_INTERNAL_ENTROPY_BUFFERS,
+  PROP_NO_COPY
 };
 
 #define GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT (5)
@@ -106,9 +111,7 @@ static void
 gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
-#ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   GstOMXVideoDec *self = GST_OMX_VIDEO_DEC (object);
-#endif
 
   switch (prop_id) {
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
@@ -116,6 +119,9 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
       self->internal_entropy_buffers = g_value_get_uint (value);
       break;
 #endif
+    case PROP_NO_COPY:
+      self->no_copy = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -126,9 +132,7 @@ static void
 gst_omx_video_dec_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-#ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   GstOMXVideoDec *self = GST_OMX_VIDEO_DEC (object);
-#endif
 
   switch (prop_id) {
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
@@ -136,6 +140,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
       g_value_set_uint (value, self->internal_entropy_buffers);
       break;
 #endif
+    case PROP_NO_COPY:
+      g_value_set_boolean (value, self->no_copy);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -163,6 +170,12 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 #endif
+
+  g_object_class_install_property (gobject_class, PROP_NO_COPY,
+      g_param_spec_boolean ("no-copy", "No copy",
+          "Whether or not to transfer decoded data without copy",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_dec_change_state);
@@ -201,6 +214,7 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
   self->internal_entropy_buffers =
       GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT;
 #endif
+  self->no_copy = FALSE;
 
   gst_video_decoder_set_packetized (GST_VIDEO_DECODER (self), TRUE);
   gst_video_decoder_set_use_default_pad_acceptcaps (GST_VIDEO_DECODER_CAST
@@ -1644,6 +1658,49 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         err = gst_omx_port_mark_reconfigured (port);
         if (err != OMX_ErrorNone)
           goto reconfigure_error;
+
+        if (self->no_copy == TRUE) {
+          /* Re-create new out_port_pool. The old one has been freed when
+           * deallocate output buffers */
+          self->out_port_pool =
+              gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->dec,
+              port, self->dmabuf);
+
+          if (gst_pad_has_current_caps (GST_VIDEO_DECODER_SRC_PAD (self))) {
+            GstStructure *config;
+            GstCaps *caps;
+
+            /* Reconfigure for pool when negotiated for caps. This is support
+             * for reconfigure due to caps change.
+             * If caps haven't negotiated yet, configure for pool will be done
+             * on decide_allocation */
+
+            caps = gst_pad_get_current_caps (GST_VIDEO_DECODER_SRC_PAD (self));
+            config = gst_buffer_pool_get_config (self->out_port_pool);
+            gst_buffer_pool_config_add_option (config,
+                GST_BUFFER_POOL_OPTION_VIDEO_META);
+            gst_buffer_pool_config_set_params (config, caps,
+                self->dec_out_port->port_def.nBufferSize,
+                self->dec_out_port->port_def.nBufferCountActual,
+                self->dec_out_port->port_def.nBufferCountActual);
+            gst_caps_unref (caps);
+            if (!gst_buffer_pool_set_config (self->out_port_pool, config)) {
+              GST_ERROR_OBJECT (self, "Failed to set config on internal pool");
+              gst_object_unref (self->out_port_pool);
+              self->out_port_pool = NULL;
+              goto reconfigure_error;
+            }
+            GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = TRUE;
+            if (!gst_buffer_pool_set_active (self->out_port_pool, TRUE)) {
+              GST_INFO_OBJECT (self, "Failed to activate internal pool");
+              gst_object_unref (self->out_port_pool);
+              self->out_port_pool = NULL;
+              goto reconfigure_error;
+            } else {
+              GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = FALSE;
+            }
+          }
+        }
       } else
 #endif
       {
@@ -2481,6 +2538,14 @@ gst_omx_video_dec_enable (GstOMXVideoDec * self, GstBuffer * input)
       return FALSE;
   }
 
+  if (self->no_copy == TRUE) {
+    /* Re-create buffer pool for output port. The old one has been
+     * freed when deallocate output buffers */
+    self->out_port_pool =
+        gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->dec,
+        self->dec_out_port, self->dmabuf);
+  }
+
   /* Unset flushing to allow ports to accept data again */
   gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, FALSE);
   gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
@@ -3288,21 +3353,68 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
     }
   }
 
-  if (!GST_VIDEO_DECODER_CLASS
-      (gst_omx_video_dec_parent_class)->decide_allocation (bdec, query))
-    return FALSE;
+  /* Set up buffer pool and notify it to parent class */
+  self = GST_OMX_VIDEO_DEC (bdec);
+  if (self->out_port_pool) {
+    GstCaps *caps;
+    gboolean update_pool = FALSE;
 
-  g_assert (gst_query_get_n_allocation_pools (query) > 0);
-  gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, NULL, NULL);
-  g_assert (pool != NULL);
-
-  config = gst_buffer_pool_get_config (pool);
-  if (gst_query_find_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL)) {
+    if (gst_query_get_n_allocation_pools (query) > 0) {
+      /* If downstream propose pool in query, update that pool base on
+       * omxbufferpool's parameters instead of add new in query */
+      update_pool = TRUE;
+    }
+    /* Set pool parameters to our own configuration */
+    config = gst_buffer_pool_get_config (self->out_port_pool);
     gst_buffer_pool_config_add_option (config,
         GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_query_parse_allocation (query, &caps, NULL);
+    gst_buffer_pool_config_set_params (config, caps,
+        self->dec_out_port->port_def.nBufferSize,
+        self->dec_out_port->port_def.nBufferCountActual,
+        self->dec_out_port->port_def.nBufferCountActual);
+    if (!gst_buffer_pool_set_config (self->out_port_pool, config)) {
+      GST_ERROR_OBJECT (self, "Failed to set config on internal pool");
+      gst_object_unref (self->out_port_pool);
+      self->out_port_pool = NULL;
+      return FALSE;
+    }
+    GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = TRUE;
+    /* This now allocates all the buffers */
+    if (!gst_buffer_pool_set_active (self->out_port_pool, TRUE)) {
+      GST_INFO_OBJECT (self, "Failed to activate internal pool");
+      gst_object_unref (self->out_port_pool);
+      self->out_port_pool = NULL;
+    } else {
+      GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = FALSE;
+    }
+    if (update_pool)
+      gst_query_set_nth_allocation_pool (query, 0, self->out_port_pool,
+          self->dec_out_port->port_def.nBufferSize,
+          self->dec_out_port->port_def.nBufferCountActual,
+          self->dec_out_port->port_def.nBufferCountActual);
+    else
+      gst_query_add_allocation_pool (query, self->out_port_pool,
+          self->dec_out_port->port_def.nBufferSize,
+          self->dec_out_port->port_def.nBufferCountActual,
+          self->dec_out_port->port_def.nBufferCountActual);
+  } else {
+    if (!GST_VIDEO_DECODER_CLASS
+        (gst_omx_video_dec_parent_class)->decide_allocation (bdec, query))
+      return FALSE;
+
+    g_assert (gst_query_get_n_allocation_pools (query) > 0);
+    gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, NULL, NULL);
+    g_assert (pool != NULL);
+
+    config = gst_buffer_pool_get_config (pool);
+    if (gst_query_find_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL)) {
+      gst_buffer_pool_config_add_option (config,
+          GST_BUFFER_POOL_OPTION_VIDEO_META);
+    }
+    gst_buffer_pool_set_config (pool, config);
+    gst_object_unref (pool);
   }
-  gst_buffer_pool_set_config (pool, config);
-  gst_object_unref (pool);
 
   return TRUE;
 }
