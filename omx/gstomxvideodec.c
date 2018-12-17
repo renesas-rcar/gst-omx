@@ -92,7 +92,8 @@ enum
 {
   PROP_0,
   PROP_INTERNAL_ENTROPY_BUFFERS,
-  PROP_NO_COPY
+  PROP_NO_COPY,
+  PROP_USE_DMABUF
 };
 
 #define GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT (5)
@@ -121,6 +122,10 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
 #endif
     case PROP_NO_COPY:
       self->no_copy = g_value_get_boolean (value);
+      self->use_dmabuf = FALSE;
+      break;
+    case PROP_USE_DMABUF:
+      self->use_dmabuf = g_value_get_boolean (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -142,6 +147,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
 #endif
     case PROP_NO_COPY:
       g_value_set_boolean (value, self->no_copy);
+      break;
+    case PROP_USE_DMABUF:
+      g_value_set_boolean (value, self->use_dmabuf);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -175,6 +183,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
       g_param_spec_boolean ("no-copy", "No copy",
           "Whether or not to transfer decoded data without copy",
           FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_USE_DMABUF,
+      g_param_spec_boolean ("use-dmabuf", "Use dmabuffer ",
+          "Whether or not to transfer decoded data using dmabuf",
+          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
@@ -215,6 +228,11 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
       GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT;
 #endif
   self->no_copy = FALSE;
+#ifdef HAVE_MMNGRBUF
+  self->use_dmabuf = TRUE;
+#else
+  self->use_dmabuf = FALSE;
+#endif
 
   gst_video_decoder_set_packetized (GST_VIDEO_DECODER (self), TRUE);
   gst_video_decoder_set_use_default_pad_acceptcaps (GST_VIDEO_DECODER_CAST
@@ -1659,7 +1677,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         if (err != OMX_ErrorNone)
           goto reconfigure_error;
 
-        if (self->no_copy == TRUE) {
+        if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
           /* Re-create new out_port_pool. The old one has been freed when
            * deallocate output buffers */
           self->out_port_pool =
@@ -2538,7 +2556,7 @@ gst_omx_video_dec_enable (GstOMXVideoDec * self, GstBuffer * input)
       return FALSE;
   }
 
-  if (self->no_copy == TRUE) {
+  if ((self->no_copy == TRUE) || ((self->use_dmabuf == TRUE))) {
     /* Re-create buffer pool for output port. The old one has been
      * freed when deallocate output buffers */
     self->out_port_pool =
