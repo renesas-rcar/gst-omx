@@ -113,6 +113,11 @@ enum
 G_DEFINE_ABSTRACT_TYPE_WITH_CODE (GstOMXVideoDec, gst_omx_video_dec,
     GST_TYPE_VIDEO_DECODER, DEBUG_INIT);
 
+/* Default fps use to calculate for timestamp if video file doesn't
+ * propose framerate information */
+#define DEFAULT_FRAME_PER_SECOND  30
+
+
 static void
 gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
@@ -2982,6 +2987,11 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
         (GstTaskFunction) gst_omx_video_dec_loop, decoder, NULL);
   }
 
+  /* Workaround for timestamp issue: frame has dts but don't have pts */
+  if (!GST_CLOCK_TIME_IS_VALID (frame->pts) &&
+      GST_CLOCK_TIME_IS_VALID (frame->dts))
+    frame->pts = frame->dts;
+
   timestamp = frame->pts;
   duration = frame->duration;
 
@@ -3172,7 +3182,20 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
           gst_util_uint64_scale (timestamp, OMX_TICKS_PER_SECOND, GST_SECOND));
       self->last_upstream_ts = timestamp;
     } else {
-      GST_OMX_SET_TICKS (buf->omx_buf->nTimeStamp, G_GUINT64_CONSTANT (0));
+      /* Increase timestamp base on duration */
+      GST_OMX_SET_TICKS (buf->omx_buf->nTimeStamp,
+          gst_util_uint64_scale (self->last_upstream_ts, OMX_TICKS_PER_SECOND,
+              GST_SECOND));
+      frame->pts = self->last_upstream_ts;
+      GST_DEBUG_OBJECT (self, "Timestamp of frame updated to %" GST_TIME_FORMAT,
+          GST_TIME_ARGS (frame->pts));
+    }
+
+    /* Workaround for timestamp issue: duration is invalid
+     * Calculate for duration base on DEFAULT_FRAME_PER_SECOND (30)*/
+    if (duration == GST_CLOCK_TIME_NONE) {
+      duration =
+          gst_util_uint64_scale (1, GST_SECOND, DEFAULT_FRAME_PER_SECOND);
     }
 
     if (duration != GST_CLOCK_TIME_NONE && first_ouput_buffer) {
