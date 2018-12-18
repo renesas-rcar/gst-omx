@@ -107,6 +107,8 @@ struct _GstOMXVideoDec
   gboolean no_copy;
   /* Set TRUE to use dmabuf to transfer decoded data */
   gboolean use_dmabuf;
+  /* Set TRUE to not using frame reorder */
+  gboolean no_reorder;
 };
 
 struct _GstOMXVideoDecClass

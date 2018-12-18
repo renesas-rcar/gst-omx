@@ -52,6 +52,9 @@
 #include "gstomxbufferpool.h"
 #include "gstomxvideo.h"
 #include "gstomxvideodec.h"
+#ifdef HAVE_VIDEODEC_EXT
+#include "OMXR_Extension_vdcmn.h"
+#endif
 #include <unistd.h>             /* getpagesize() */
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_dec_debug_category);
@@ -93,7 +96,8 @@ enum
   PROP_0,
   PROP_INTERNAL_ENTROPY_BUFFERS,
   PROP_NO_COPY,
-  PROP_USE_DMABUF
+  PROP_USE_DMABUF,
+  PROP_NO_REORDER
 };
 
 #define GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT (5)
@@ -127,6 +131,9 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     case PROP_USE_DMABUF:
       self->use_dmabuf = g_value_get_boolean (value);
       break;
+    case PROP_NO_REORDER:
+      self->no_reorder = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -150,6 +157,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
       break;
     case PROP_USE_DMABUF:
       g_value_set_boolean (value, self->use_dmabuf);
+      break;
+    case PROP_NO_REORDER:
+      g_value_set_boolean (value, self->no_reorder);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -188,6 +198,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
       g_param_spec_boolean ("use-dmabuf", "Use dmabuffer ",
           "Whether or not to transfer decoded data using dmabuf",
           TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_NO_REORDER,
+      g_param_spec_boolean ("no-reorder", "Output picture reordering",
+          "Whether or not to let output picture data in decoding order",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
@@ -233,6 +248,7 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
 #else
   self->use_dmabuf = FALSE;
 #endif
+  self->no_reorder = FALSE;
 
   gst_video_decoder_set_packetized (GST_VIDEO_DECODER (self), TRUE);
   gst_video_decoder_set_use_default_pad_acceptcaps (GST_VIDEO_DECODER_CAST
@@ -1808,8 +1824,11 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
    * stream, corrupted input data...
    * In any cases, not likely to be seen again. so drop it before they pile up
    * and use all the memory. */
-  gst_omx_video_dec_clean_older_frames (self, buf,
-      gst_video_decoder_get_frames (GST_VIDEO_DECODER (self)));
+  if (self->no_reorder == FALSE)
+    /* Do not clean in no_reorder mode, as in that mode the output frames
+     * are not in display order */
+    gst_omx_video_dec_clean_older_frames (self, buf,
+        gst_video_decoder_get_frames (GST_VIDEO_DECODER (self)));
 
   if (frame
       && (deadline = gst_video_decoder_get_max_decode_time
@@ -2749,6 +2768,26 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
       return FALSE;
     }
   }
+#ifdef HAVE_VIDEODEC_EXT
+  if (!needs_disable) {
+    /* Setting reorder mode (output port only) */
+    OMXR_MC_VIDEO_PARAM_REORDERTYPE sReorder;
+    GST_OMX_INIT_STRUCT (&sReorder);
+    sReorder.nPortIndex = self->dec_out_port->index;    /* default */
+
+    if (self->no_reorder != FALSE)
+      sReorder.bReorder = OMX_FALSE;
+    else
+      sReorder.bReorder = OMX_TRUE;
+
+    gst_omx_component_set_parameter (self->dec, OMXR_MC_IndexParamVideoReorder,
+        &sReorder);
+  }
+#else
+  if (self->no_reorder != FALSE)
+    GST_ERROR_OBJECT (self,
+        "no-reorder mode is invalid now due to MC does not support");
+#endif
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
 #ifdef USE_OMX_TARGET_RCAR
