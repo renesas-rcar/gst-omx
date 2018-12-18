@@ -105,6 +105,8 @@ struct _GstOMXVideoDec
   gboolean use_dmabuf;
   /* Set TRUE to send buffer of omxbufferpool to downstream */
   gboolean no_copy;
+  /* Set TRUE to not using frame reorder */
+  gboolean no_reorder;
 };
 
 struct _GstOMXVideoDecClass
