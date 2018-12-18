@@ -121,12 +121,14 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
       self->internal_entropy_buffers = g_value_get_uint (value);
       break;
 #endif
-    case PROP_USE_DMABUF:
-      self->use_dmabuf = g_value_get_boolean (value);
-      break;
     case PROP_NO_COPY:
       self->no_copy = g_value_get_boolean (value);
       self->use_dmabuf = FALSE;
+      self->has_set_property = TRUE;
+      break;
+    case PROP_USE_DMABUF:
+      self->use_dmabuf = g_value_get_boolean (value);
+      self->has_set_property = TRUE;
       break;
     case PROP_NO_REORDER:
       self->no_reorder = g_value_get_boolean (value);
@@ -256,6 +258,7 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
 #endif
   self->no_reorder = FALSE;
   self->lossy_compress = FALSE;
+  self->has_set_property = FALSE;
 
   gst_video_decoder_set_packetized (GST_VIDEO_DECODER (self), TRUE);
   gst_video_decoder_set_use_default_pad_acceptcaps (GST_VIDEO_DECODER_CAST
@@ -419,6 +422,25 @@ gst_omx_video_dec_open (GstVideoDecoder * decoder)
   if (!set_zynqultrascaleplus_props (self))
     return FALSE;
 #endif
+
+  /* Use hacks to choose default mode, normally default mode is dmabuf */
+  if (!((klass->cdata.hacks & GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT) &&
+          (klass->cdata.hacks & GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT)) &&
+      (!self->has_set_property)) {
+    if (klass->cdata.hacks & GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT) {
+      GST_DEBUG_OBJECT (self, "Use copy mode as default");
+      self->no_copy = FALSE;
+      self->use_dmabuf = FALSE;
+    }
+    if (klass->cdata.hacks & GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT) {
+      GST_DEBUG_OBJECT (self, "Use no-copy mode as default");
+      self->no_copy = TRUE;
+      self->use_dmabuf = FALSE;
+    }
+  } else {
+    GST_DEBUG_OBJECT (self,
+        "Disable hacks due to option(s) from user or incorrect setting for hacks");
+  }
 
   return TRUE;
 }
