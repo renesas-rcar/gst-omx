@@ -1,6 +1,7 @@
 /*
  * Copyright 2014 Advanced Micro Devices, Inc.
  *   Author: Christian König <christian.koenig@amd.com>
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -86,6 +87,11 @@ struct _GstOMXBufferPool
 
   /* The type of buffers produced by the decoder */
   GstOMXBufferMode output_mode;
+
+#ifdef HAVE_MMNGRBUF
+  /* Array use to contain dma_id. It is used in export_end dmabuf area */
+  GArray *id_array;
+#endif
 };
 
 struct _GstOMXBufferPoolClass
