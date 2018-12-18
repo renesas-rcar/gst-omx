@@ -107,6 +107,8 @@ struct _GstOMXVideoDec
   gboolean no_copy;
   /* Set TRUE to not using frame reorder */
   gboolean no_reorder;
+  /* Set TRUE to use lossy image compression  */
+  gboolean lossy_compress;
 };
 
 struct _GstOMXVideoDecClass

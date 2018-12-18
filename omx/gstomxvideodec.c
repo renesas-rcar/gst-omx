@@ -93,7 +93,8 @@ enum
   PROP_INTERNAL_ENTROPY_BUFFERS,
   PROP_USE_DMABUF,
   PROP_NO_COPY,
-  PROP_NO_REORDER
+  PROP_NO_REORDER,
+  PROP_LOSSY_COMPRESS
 };
 
 #define GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT (5)
@@ -130,6 +131,9 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     case PROP_NO_REORDER:
       self->no_reorder = g_value_get_boolean (value);
       break;
+    case PROP_LOSSY_COMPRESS:
+      self->lossy_compress = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -156,6 +160,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
       break;
     case PROP_NO_REORDER:
       g_value_set_boolean (value, self->no_reorder);
+      break;
+    case PROP_LOSSY_COMPRESS:
+      g_value_set_boolean (value, self->lossy_compress);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -200,6 +207,12 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
           "Whether or not to let output picture data in decoding order",
           FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_LOSSY_COMPRESS,
+      g_param_spec_boolean ("lossy-compress",
+          "Use lossy image compression function",
+          "Whether or not to use lossy image compression function",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_dec_change_state);
@@ -242,6 +255,7 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
   self->use_dmabuf = TRUE;
 #endif
   self->no_reorder = FALSE;
+  self->lossy_compress = FALSE;
 
   gst_video_decoder_set_packetized (GST_VIDEO_DECODER (self), TRUE);
   gst_video_decoder_set_use_default_pad_acceptcaps (GST_VIDEO_DECODER_CAST
@@ -2697,10 +2711,29 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     gst_omx_component_set_parameter (self->dec, OMXR_MC_IndexParamVideoReorder,
         &sReorder);
   }
+
+  if (!needs_disable) {
+    /* Setting lossy compression mode (output port) */
+    OMXR_MC_VIDEO_PARAM_LOSSY_COMPRESSIONTYPE sLossy;
+    GST_OMX_INIT_STRUCT (&sLossy);
+    sLossy.nPortIndex = self->dec_out_port->index;
+
+    if (self->lossy_compress == TRUE)
+      sLossy.bEnable = OMX_TRUE;
+    else
+      sLossy.bEnable = OMX_FALSE;
+
+    gst_omx_component_set_parameter (self->dec,
+        OMXR_MC_IndexParamVideoLossyCompression, &sLossy);
+  }
 #else
   if (self->no_reorder != FALSE)
     GST_ERROR_OBJECT (self,
         "no-reorder mode is invalid now due to MC does not support");
+
+  if (self->lossy_compress == TRUE)
+    GST_ERROR_OBJECT (self,
+        "lossy-compress mode is invalid now due to MC does not support");
 #endif
 
   GST_DEBUG_OBJECT (self, "Updating ports definition");
