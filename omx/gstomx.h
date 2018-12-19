@@ -60,6 +60,7 @@
 #endif
 
 #ifdef HAVE_VIDEO_EXT
+#include <OMX_Video.h>
 #include <OMX_VideoExt.h>
 #endif
 
