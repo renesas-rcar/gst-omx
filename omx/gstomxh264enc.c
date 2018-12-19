@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -482,13 +483,26 @@ set_avc_intra_period (GstOMXH264Enc * self)
 {
   OMX_VIDEO_CONFIG_AVCINTRAPERIOD config_avcintraperiod;
   OMX_ERRORTYPE err;
+#ifdef USE_OMX_TARGET_RCAR
+  gboolean use_target_RCar = TRUE;
+#endif
 
   GST_OMX_INIT_STRUCT (&config_avcintraperiod);
   config_avcintraperiod.nPortIndex =
       GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
-  err =
-      gst_omx_component_get_parameter (GST_OMX_VIDEO_ENC (self)->enc,
-      OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+
+#ifdef USE_OMX_TARGET_RCAR
+  if (use_target_RCar) {
+    /* Renesas OMX support Get/Set Config for this Index. */
+    err =
+        gst_omx_component_get_config (GST_OMX_VIDEO_ENC (self)->enc,
+        OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+  } else
+#endif
+    err =
+        gst_omx_component_get_parameter (GST_OMX_VIDEO_ENC (self)->enc,
+        OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+
   if (err == OMX_ErrorUnsupportedIndex) {
     GST_WARNING_OBJECT (self,
         "OMX_IndexConfigVideoAVCIntraPeriod  not supported by component");
@@ -518,10 +532,18 @@ set_avc_intra_period (GstOMXH264Enc * self)
     if (self->b_frames == GST_OMX_H264_VIDEO_ENC_B_FRAMES_DEFAULT)
       config_avcintraperiod.nPFrames = self->interval_intraframes;
   }
+#ifdef USE_OMX_TARGET_RCAR
+    if (use_target_RCar) {
+      /* Renesas OMX support Get/Set Config for this Index. */
+      err =
+          gst_omx_component_set_config (GST_OMX_VIDEO_ENC (self)->enc,
+          OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+    } else
+#endif
+      err =
+          gst_omx_component_set_parameter (GST_OMX_VIDEO_ENC (self)->enc,
+          OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
 
-  err =
-      gst_omx_component_set_parameter (GST_OMX_VIDEO_ENC (self)->enc,
-      OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "can't set OMX_IndexConfigVideoAVCIntraPeriod %s (0x%08x)",
@@ -833,8 +855,55 @@ gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
         gst_caps_unref (caps);
         return NULL;
     }
-    gst_caps_set_simple (caps,
-        "profile", G_TYPE_STRING, profile, "level", G_TYPE_STRING, level, NULL);
+    {
+#ifdef USE_OMX_TARGET_RCAR
+      /* OMX component support auto update level base on parameters
+       * So it is necessary to check actual level and setting level
+       * If it is under auto update level, keep level on caps as setting
+       * from user to avoid negotiation error.
+       * But notify to user the actual level on encoded tream
+       */
+      GstCaps *peercaps;
+      const gchar *level_string;
+
+      peercaps = gst_pad_peer_query_caps (GST_VIDEO_ENCODER_SRC_PAD (enc),
+          gst_pad_get_pad_template_caps (GST_VIDEO_ENCODER_SRC_PAD (enc)));
+
+      if (peercaps) {
+        GstStructure *s;
+
+        if (gst_caps_is_empty (peercaps)) {
+          gst_caps_unref (peercaps);
+          GST_WARNING_OBJECT (self, "Peer_caps is empty caps");
+        } else {
+          s = gst_caps_get_structure (peercaps, 0);
+          level_string = gst_structure_get_string (s, "level");
+          if (level_string && (!g_str_equal (level_string, level))) {
+            /* FIXME: Currently, level=1 is auto judgment mode */
+            if (g_str_equal (level_string, "1")) {
+              GST_WARNING_OBJECT (self,
+                  "level: %s changed to appropriate level: %s. Video bitstream will have level %s",
+                  level_string, level, level);
+              level = level_string;
+            } else {
+              GST_ERROR_OBJECT (self,
+                  "Incorrect level: expect level %s actual level %s",
+                  level_string, level);
+            }
+          }
+        }
+      }
+#endif
+      gst_caps_set_simple (caps,
+          "profile", G_TYPE_STRING, profile, "level", G_TYPE_STRING, level,
+          NULL);
+#ifdef USE_OMX_TARGET_RCAR
+      if (peercaps)
+        /* Unref peercaps after seting value for caps */
+        gst_caps_unref (peercaps);
+#endif
+    }
+
   }
 
   return caps;
