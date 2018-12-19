@@ -216,6 +216,13 @@ G_BEGIN_DECLS
  */
 #define GST_OMX_HACK_SKIP_HANDLE_CODEC_DATA                           G_GUINT64_CONSTANT (0x0000000000004000)
 
+/* Align Stride for 32 in case support for NV12 format (Semi-planar)
+ * Align Stride for 64 in case support for I420 format (Planar).
+ * This alignment support for Renesas Video Encoder MC that have restriction
+ * of nStride in OMX.
+ */
+#define GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN                       G_GUINT64_CONSTANT (0x0000000000008000)
+
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;
 typedef enum _GstOMXPortDirection GstOMXPortDirection;
