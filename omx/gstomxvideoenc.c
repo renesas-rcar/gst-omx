@@ -1808,11 +1808,25 @@ gst_omx_video_enc_update_input_port (GstOMXVideoEnc * self,
 {
   GstOMXVideoEncClass *klass = GST_OMX_VIDEO_ENC_GET_CLASS (self);
 
-  if (port_def.nBufferAlignment)
+  if (port_def.nBufferAlignment) {
     port_def.format.video.nStride =
         GST_ROUND_UP_N (stride, port_def.nBufferAlignment);
-  else
-    port_def.format.video.nStride = GST_ROUND_UP_4 (stride);    /* safe (?) default */
+  } else {
+    if (klass->cdata.hacks & GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN) {
+      switch (port_def.format.video.eColorFormat) {
+        case OMX_COLOR_FormatYUV420Planar:
+          port_def.format.video.nStride = GST_ROUND_UP_64 (stride);
+          break;
+        case OMX_COLOR_FormatYUV420SemiPlanar:
+          port_def.format.video.nStride = GST_ROUND_UP_32 (stride);
+          break;
+        default:
+          break;
+      }
+    } else {
+      port_def.format.video.nStride = GST_ROUND_UP_4 (stride);  /* safe (?) default */
+    }
+  }
 
   if (klass->cdata.hacks & GST_OMX_HACK_HEIGHT_MULTIPLE_16)
     port_def.format.video.nSliceHeight = GST_ROUND_UP_16 (slice_height);

@@ -3736,6 +3736,8 @@ gst_omx_parse_hacks (gchar ** hacks)
       hacks_flags |= GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO;
     else if (g_str_equal (*hacks, "skip-handle-codec-data"))
       hacks_flags |= GST_OMX_HACK_SKIP_HANDLE_CODEC_DATA;
+    else if (g_str_equal (*hacks, "renesas-encmc-stride-align"))
+      hacks_flags |= GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN;
     else
       GST_WARNING ("Unknown hack: %s", *hacks);
     hacks++;
