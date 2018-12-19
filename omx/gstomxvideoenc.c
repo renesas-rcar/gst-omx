@@ -39,6 +39,7 @@
 #if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
 #include "OMXR_Extension_vecmn.h"
 #endif
+#include "gstomxbufferpool.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
@@ -284,7 +285,8 @@ enum
   PROP_SLICE_SIZE,
   PROP_DEPENDENT_SLICE,
   PROP_DEFAULT_ROI_QUALITY,
-  PROP_SCAN_TYPE
+  PROP_SCAN_TYPE,
+  PROP_NO_COPY
 };
 
 /* FIXME: Better defaults */
@@ -376,6 +378,12 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
           GST_TYPE_OMX_VIDEO_ENC_SCAN_TYPE,
           GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+
+  g_object_class_install_property (gobject_class, PROP_NO_COPY,
+      g_param_spec_boolean ("no-copy", "Propose buffer to upstream",
+          "Whether or not to share input buffer (userptr) with upstream element",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
@@ -538,6 +546,7 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->quant_p_frames = GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
   self->quant_b_frames = GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
   self->scan_type = GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT;
+  self->no_copy = FALSE;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   self->qp_mode = GST_OMX_VIDEO_ENC_QP_MODE_DEFAULT;
   self->min_qp = GST_OMX_VIDEO_ENC_MIN_QP_DEFAULT;
@@ -965,6 +974,12 @@ gst_omx_video_enc_shutdown (GstOMXVideoEnc * self)
 
   GST_DEBUG_OBJECT (self, "Shutting down encoder");
 
+  if (self->in_port_pool) {
+    gst_buffer_pool_set_active (self->in_port_pool, FALSE);
+    gst_object_unref (self->in_port_pool);
+    self->in_port_pool = NULL;
+  }
+
   state = gst_omx_component_get_state (self->enc, 0);
   if (state > OMX_StateLoaded || state == OMX_StateInvalid) {
     if (state > OMX_StateIdle) {
@@ -1059,6 +1074,9 @@ gst_omx_video_enc_set_property (GObject * object, guint prop_id,
     case PROP_SCAN_TYPE:
       self->scan_type = g_value_get_enum (value);
       break;
+    case PROP_NO_COPY:
+      self->no_copy = g_value_get_boolean (value);
+      break;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     case PROP_QP_MODE:
       self->qp_mode = g_value_get_enum (value);
@@ -1141,6 +1159,9 @@ gst_omx_video_enc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_SCAN_TYPE:
       g_value_set_enum (value, self->scan_type);
+      break;
+    case PROP_NO_COPY:
+      g_value_set_boolean (value, self->no_copy);
       break;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     case PROP_QP_MODE:
@@ -2846,11 +2867,57 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
     handle_roi_metadata (self, frame->input_buffer);
 #endif
 
-    /* Copy the buffer content in chunks of size as requested
-     * by the port */
-    if (!gst_omx_video_enc_fill_buffer (self, frame->input_buffer, buf)) {
-      gst_omx_port_release_buffer (port, buf);
-      goto buffer_fill_error;
+    if (self->no_copy) {
+      GstMapInfo in_info;
+      gint count = 0;
+      GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (self->in_port_pool);
+
+      /* Compare input buffer with buffer got from port to get target data for
+       * encoder
+       */
+      if (!pool->deactivated) {
+        if (!gst_buffer_map (frame->input_buffer, &in_info, GST_MAP_READ)) {
+          GST_ERROR_OBJECT (self, "Can not map input buffer");
+          gst_omx_port_release_buffer (port, buf);
+          goto flow_error;
+        }
+
+        if (buf->omx_buf->pBuffer != in_info.data) {
+          gst_omx_port_release_buffer (port, buf);
+          /* Search in OMXBuffers to get target buffer which have the
+           * same data with input buffer.
+           * If after 3 times searching, there is no target buffer found.
+           * This searching will be stop and return error to avoid
+           * unlimited loop if there is error happen on OMX
+           */
+          do {
+            acq_ret = gst_omx_port_acquire_buffer (port, &buf);
+            if (acq_ret != GST_OMX_ACQUIRE_BUFFER_OK) {
+              GST_ERROR_OBJECT (self, "Can NOT acquire buffer from input port");
+              gst_video_codec_frame_unref (frame);
+              return GST_FLOW_ERROR;
+            }
+            if (buf->omx_buf->pBuffer != in_info.data)
+              gst_omx_port_release_buffer (port, buf);
+            count += 1;
+          } while (buf->omx_buf->pBuffer != in_info.data
+              && count < port->port_def.nBufferCountActual * 3);
+        }
+        if (count == port->port_def.nBufferCountActual * 3) {
+          GST_ERROR_OBJECT (self,
+              "Can not get target OMXBuffer after 3 times searching");
+          goto flow_error;
+        }
+        buf->omx_buf->nFilledLen = in_info.size;
+        gst_buffer_unmap (frame->input_buffer, &in_info);
+      }
+    } else {
+      /* Copy the buffer content in chunks of size as requested
+       * by the port */
+      if (!gst_omx_video_enc_fill_buffer (self, frame->input_buffer, buf)) {
+        gst_omx_port_release_buffer (port, buf);
+        goto buffer_fill_error;
+      }
     }
 
     timestamp = frame->pts;
@@ -3048,17 +3115,82 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
     return FALSE;
   }
 
-  gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+  if (self->no_copy == TRUE) {
+    /* Allocate buffers and propose them to upstream */
+    guint size;
+    OMX_PARAM_PORTDEFINITIONTYPE port_def;
+    guint max, min;
 
-  num_buffers = self->enc_in_port->port_def.nBufferCountMin + 1;
-  GST_DEBUG_OBJECT (self,
-      "request at least %d buffers of size %" G_GSIZE_FORMAT, num_buffers,
-      info.size);
-  gst_query_add_allocation_pool (query, NULL, info.size, num_buffers, 0);
+    gst_omx_port_get_port_definition (self->enc_in_port, &port_def);
 
-  return
-      GST_VIDEO_ENCODER_CLASS
-      (gst_omx_video_enc_parent_class)->propose_allocation (encoder, query);
+    gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+
+    size = GST_VIDEO_INFO_SIZE (&info);
+
+    if (gst_omx_component_get_state (self->enc,
+            GST_CLOCK_TIME_NONE) != OMX_StateExecuting) {
+      GST_ERROR_OBJECT (self,
+          "OMX haven't finished buffer allocation and change state");
+      return FALSE;
+    }
+    if (gst_query_get_n_allocation_pools (query) == 0) {
+      GstStructure *structure;
+      GstAllocator *allocator = NULL;
+      GstAllocationParams params = { 0, };
+
+      if (gst_query_get_n_allocation_params (query) > 0)
+        gst_query_parse_nth_allocation_param (query, 0, &allocator, &params);
+      else
+        gst_query_add_allocation_param (query, allocator, &params);
+
+      self->in_port_pool = gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self),
+          self->enc, self->enc_in_port, GST_OMX_BUFFER_MODE_SYSTEM_MEMORY);
+
+      structure = gst_buffer_pool_get_config (self->in_port_pool);
+      gst_buffer_pool_config_add_option (structure, "not_change_pool");
+      gst_buffer_pool_config_set_params (structure, caps,
+          self->enc_in_port->port_def.nBufferSize,
+          self->enc_in_port->port_def.nBufferCountActual,
+          self->enc_in_port->port_def.nBufferCountActual);
+      gst_buffer_pool_config_get_params (structure, &caps, NULL, &min, &max);
+      gst_buffer_pool_config_set_allocator (structure, allocator, &params);
+
+      if (allocator)
+        gst_object_unref (allocator);
+
+      if (!gst_buffer_pool_set_config (self->in_port_pool, structure)) {
+        GST_ERROR_OBJECT (self, "failed to set config");
+        gst_object_unref (self->in_port_pool);
+        return FALSE;
+      }
+      GST_OMX_BUFFER_POOL (self->in_port_pool)->allocating = TRUE;
+
+      /* Wait for all buffers allocate */
+      while (!gst_buffer_pool_set_active (self->in_port_pool, TRUE)) {
+        GST_DEBUG_OBJECT (self, "Activating pool");
+      }
+
+      GST_OMX_BUFFER_POOL (self->in_port_pool)->allocating = FALSE;
+
+      gst_query_add_allocation_pool (query, self->in_port_pool, size,
+          port_def.nBufferCountActual, port_def.nBufferCountActual);
+
+      gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+
+    }
+
+    return TRUE;
+  } else {
+    num_buffers = self->enc_in_port->port_def.nBufferCountMin + 1;
+    GST_DEBUG_OBJECT (self,
+        "request at least %d buffers of size %" G_GSIZE_FORMAT, num_buffers,
+        info.size);
+    gst_query_add_allocation_pool (query, NULL, info.size, num_buffers, 0);
+
+    return
+        GST_VIDEO_ENCODER_CLASS
+        (gst_omx_video_enc_parent_class)->propose_allocation (encoder, query);
+  }
 }
 
 static GList *

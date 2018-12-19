@@ -53,6 +53,7 @@ struct _GstOMXVideoEnc
   /* < protected > */
   GstOMXComponent *enc;
   GstOMXPort *enc_in_port, *enc_out_port;
+  GstBufferPool *in_port_pool, *out_port_pool;
 
   /* < private > */
   GstVideoCodecState *input_state;
@@ -61,6 +62,8 @@ struct _GstOMXVideoEnc
   gboolean started;
    /* TRUE if the ports where disabled after being activated the first time. */
   gboolean disabled;
+  /* TRUE to share buffers (userptr) to upstream */
+  gboolean no_copy;
 
   GstClockTime last_upstream_ts;
 
