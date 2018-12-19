@@ -222,6 +222,12 @@ G_BEGIN_DECLS
 /* Support default pixel aspect ratio is 1:1.
  */
 #define GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO                       G_GUINT64_CONSTANT (0x0000000000002000)
+/* Align Stride for 32 in case support for NV12 format (Semi-planar)
+ * Align Stride for 64 in case support for I420 format (Planar).
+ * This alignment support for Renesas Video Encoder MC that have restriction
+ * of nStride in OMX.
+ */
+#define GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN                       G_GUINT64_CONSTANT (0x0000000000008000)
 
 /* If the component does not handle for codec data. Skip this handling
  * Happens with Renesas OMX WMADEC
