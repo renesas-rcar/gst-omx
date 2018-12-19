@@ -54,6 +54,7 @@
 #ifdef HAVE_VIDEODEC_EXT
 #include "OMXR_Extension_vdcmn.h"
 #endif
+#include "gstomxwmvdec.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_dec_debug_category
@@ -3087,10 +3088,40 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
           "Copying %d bytes (frame offset %d) to the component",
           (guint) buf->omx_buf->nFilledLen, offset);
 
-      gst_buffer_extract (frame->input_buffer, offset,
-          buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
-          buf->omx_buf->nFilledLen);
+      if (GST_IS_OMX_WMV_DEC (self) && GST_OMX_WMV_DEC (self)->advanced_profile) {
+        guint8 *pd_sc;          //start code of picture data
+        GstMapInfo map;
+        gboolean right_struct = FALSE;
+        OMX_U32 omx_offset = buf->omx_buf->nOffset;
 
+        if (!gst_buffer_map (frame->input_buffer, &map, GST_MAP_READ)) {
+          GST_ERROR_OBJECT (self, "Failed to create a GstBuffer mapping");
+          goto map_failed;
+        }
+        if (map.data[0] == 0x00 && map.data[1] == 0x00 && map.data[2] == 0x01
+            && (map.data[3] == 0x0d || map.data[3] == 0x0e))
+          right_struct = TRUE;
+        gst_buffer_unmap (frame->input_buffer, &map);
+
+        if (!right_struct) {
+          pd_sc = (guint8 *) g_malloc (4);
+          pd_sc[0] = 0x00;
+          pd_sc[1] = 0x00;
+          pd_sc[2] = 0x01;
+          pd_sc[3] = 0x0d;
+
+          memcpy (buf->omx_buf->pBuffer + buf->omx_buf->nOffset, pd_sc, 4);
+          omx_offset += 4;
+
+          g_free (pd_sc);
+        }
+        gst_buffer_extract (frame->input_buffer, offset,
+            buf->omx_buf->pBuffer + omx_offset, buf->omx_buf->nFilledLen);
+      } else {
+        gst_buffer_extract (frame->input_buffer, offset,
+            buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
+            buf->omx_buf->nFilledLen);
+      }
       offset += buf->omx_buf->nFilledLen;
       if (offset == size)
         done = TRUE;
