@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -47,6 +47,7 @@
 #include "OMXR_Extension_video.h"
 #endif
 #include "gst/allocators/gstdmabuf.h"
+#include "gstomxh264enc.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
@@ -3378,8 +3379,10 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
     return FALSE;
   }
 
-  if (self->no_copy == TRUE) {
-    /* Allocate buffers and propose them to upstream */
+  if ((self->no_copy == TRUE) || (self->use_dmabuf == TRUE)) {
+    /* Allocate buffers and propose them to upstream.
+     * Current omxbufferpool doesn't create dmabuf buffer incase encoder.
+     * But propose it to notify to upstream number of buffers */
     guint size;
     OMX_PARAM_PORTDEFINITIONTYPE port_def;
     guint max, min;

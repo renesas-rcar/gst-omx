@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017-2018, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -31,6 +31,9 @@
 #ifdef USE_OMX_TARGET_RPI
 #include <OMX_Broadcom.h>
 #include <OMX_Index.h>
+#endif
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+#include "OMXR_Extension_vecmn.h"
 #endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_h264_enc_debug_category);
@@ -63,7 +66,8 @@ enum
   PROP_ENTROPY_MODE,
   PROP_CONSTRAINED_INTRA_PREDICTION,
   PROP_LOOP_FILTER_MODE,
-  PROP_USE_INCAPS_HEADER
+  PROP_USE_INCAPS_HEADER,
+  PROP_REFFRAMES
 };
 
 #ifdef USE_OMX_TARGET_RPI
@@ -76,6 +80,7 @@ enum
 #define GST_OMX_H264_VIDEO_ENC_CONSTRAINED_INTRA_PREDICTION_DEFAULT (FALSE)
 #define GST_OMX_H264_VIDEO_ENC_LOOP_FILTER_MODE_DEFAULT (0xffffffff)
 #define GST_OMX_H264_VIDEO_ENC_USE_INCAPS_HEADER_DEFAULT      FALSE
+#define GST_OMX_H264_VIDEO_ENC_REFFRAMES_DEFAULT (0xffffffff)
 
 /* class initialization */
 
@@ -220,6 +225,13 @@ gst_omx_h264_enc_class_init (GstOMXH264EncClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
+  g_object_class_install_property (gobject_class, PROP_REFFRAMES,
+      g_param_spec_uint ("ref-frames", "Reference frames",
+          "Number of reference frames used for inter-motion search (0xffffffff=component default)",
+          0, G_MAXUINT, GST_OMX_H264_VIDEO_ENC_REFFRAMES_DEFAULT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+
   basevideoenc_class->flush = gst_omx_h264_enc_flush;
   basevideoenc_class->stop = gst_omx_h264_enc_stop;
 
@@ -271,6 +283,9 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
     case PROP_USE_INCAPS_HEADER:
       self->use_incaps_header = g_value_get_boolean (value);
       break;
+    case PROP_REFFRAMES:
+      self->refframes = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -311,6 +326,9 @@ gst_omx_h264_enc_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_USE_INCAPS_HEADER:
       g_value_set_boolean (value, self->use_incaps_header);
       break;
+    case PROP_REFFRAMES:
+      g_value_set_uint (value, self->refframes);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -334,6 +352,7 @@ gst_omx_h264_enc_init (GstOMXH264Enc * self)
       GST_OMX_H264_VIDEO_ENC_CONSTRAINED_INTRA_PREDICTION_DEFAULT;
   self->loop_filter_mode = GST_OMX_H264_VIDEO_ENC_LOOP_FILTER_MODE_DEFAULT;
   self->use_incaps_header = GST_OMX_H264_VIDEO_ENC_USE_INCAPS_HEADER_DEFAULT;
+  self->refframes = GST_OMX_H264_VIDEO_ENC_REFFRAMES_DEFAULT;
 }
 
 static gboolean
@@ -623,6 +642,7 @@ gst_omx_h264_enc_set_format (GstOMXVideoEnc * enc, GstOMXPort * port,
   GstOMXH264Enc *self = GST_OMX_H264_ENC (enc);
   GstCaps *peercaps;
   OMX_PARAM_PORTDEFINITIONTYPE port_def;
+  OMX_VIDEO_PARAM_AVCTYPE param_avc;
 #ifdef USE_OMX_TARGET_RPI
   OMX_CONFIG_PORTBOOLEANTYPE config_inline_header;
 #endif
@@ -675,6 +695,37 @@ gst_omx_h264_enc_set_format (GstOMXVideoEnc * enc, GstOMXPort * port,
   if (self->interval_intraframes)
     set_brcm_video_intra_period (self);
 #endif
+
+  if ((self->refframes != GST_OMX_H264_VIDEO_ENC_REFFRAMES_DEFAULT)) {
+
+    GST_OMX_INIT_STRUCT (&param_avc);
+    param_avc.nPortIndex = GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
+    err =
+        gst_omx_component_get_parameter (GST_OMX_VIDEO_ENC (self)->enc,
+        OMX_IndexParamVideoAvc, &param_avc);
+
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (self, "Can't get OMX_IndexParamVideoAvc %s (0x%08x)",
+          gst_omx_error_to_string (err), err);
+      return FALSE;
+    }
+
+    GST_DEBUG_OBJECT (self, "default nBFrames:%u nRefFrames:%u",
+        (guint) param_avc.nBFrames, (guint) param_avc.nRefFrames);
+
+    if (self->refframes != GST_OMX_H264_VIDEO_ENC_REFFRAMES_DEFAULT)
+      param_avc.nRefFrames = self->refframes;
+
+    err =
+        gst_omx_component_set_parameter (GST_OMX_VIDEO_ENC (self)->enc,
+        OMX_IndexParamVideoAvc, &param_avc);
+
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (self, "Can't set OMX_IndexParamVideoAvc %s (0x%08x)",
+          gst_omx_error_to_string (err), err);
+      return FALSE;
+    }
+  }
 
   gst_omx_port_get_port_definition (GST_OMX_VIDEO_ENC (self)->enc_out_port,
       &port_def);
@@ -880,7 +931,8 @@ gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
        * But notify to user the actual level on encoded tream
        */
       GstCaps *peercaps;
-      const gchar *level_string;
+      const gchar *level_string, *profile_string;
+      gboolean show_info = FALSE;
 
       peercaps = gst_pad_peer_query_caps (GST_VIDEO_ENCODER_SRC_PAD (enc),
           gst_pad_get_pad_template_caps (GST_VIDEO_ENCODER_SRC_PAD (enc)));
@@ -907,8 +959,67 @@ gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
                   level_string, level);
             }
           }
+          profile_string = gst_structure_get_string (s, "profile");
+
+          if (profile_string && (!g_str_equal (profile_string, profile))) {
+            show_info = TRUE;
+          }
         }
       }
+
+      {
+        /* Inform actual value of nIDRPeriod, nPframe, nBframe, nRefFrames
+         * because OMX can judge for these values*/
+        OMX_VIDEO_CONFIG_AVCINTRAPERIOD config_avcintraperiod;
+        OMX_VIDEO_PARAM_AVCTYPE param_avc;
+
+        GST_OMX_INIT_STRUCT (&config_avcintraperiod);
+        config_avcintraperiod.nPortIndex =
+            GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
+
+        err =
+            gst_omx_component_get_config (GST_OMX_VIDEO_ENC (self)->enc,
+            OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+        if (err != OMX_ErrorNone)
+          GST_ERROR_OBJECT (self,
+              "Can't get OMX_IndexConfigVideoAVCIntraPeriod %s (0x%08x)",
+              gst_omx_error_to_string (err), err);
+
+        GST_OMX_INIT_STRUCT (&param_avc);
+        param_avc.nPortIndex = GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
+
+        err =
+            gst_omx_component_get_parameter (GST_OMX_VIDEO_ENC (self)->enc,
+            OMX_IndexParamVideoAvc, &param_avc);
+        if (err != OMX_ErrorNone)
+          GST_ERROR_OBJECT (self,
+              "Can't get OMX_IndexParamVideoAvc %s (0x%08x)",
+              gst_omx_error_to_string (err), err);
+        GST_INFO_OBJECT (self,
+            "OMX judgement: Video will be encoded with nIDRPeriod = %u nPFrames = %u BFrames = %u nRefFrames = %u",
+            (guint) config_avcintraperiod.nIDRPeriod,
+            (guint) param_avc.nPFrames, (guint) param_avc.nBFrames,
+            (guint) param_avc.nRefFrames);
+
+        if (show_info) {
+#ifdef HAVE_VIDEOENC_EXT
+          /* Inform restrictions when encode (follow to Table 6-3 on H264 Encoder UM)
+*/
+          if ((GST_OMX_VIDEO_ENC (self)->scan_type ==
+                  OMXR_MC_VIDEO_MemAllocFieldTff)
+              || (GST_OMX_VIDEO_ENC (self)->scan_type ==
+                  OMXR_MC_VIDEO_MemAllocFieldBff)) {
+            GST_ERROR_OBJECT (self,
+                "Interlace encoding only accepts profile is Main/High");
+          } else {
+            if (param_avc.nBFrames > 0)
+              GST_ERROR_OBJECT (self,
+                  "Encoding only accepts profile is Main/High incase nBFrames is different from 0");
+          }
+#endif
+        }
+      }
+
 #endif
       gst_caps_set_simple (caps,
           "profile", G_TYPE_STRING, profile, "level", G_TYPE_STRING, level,
