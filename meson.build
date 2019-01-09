@@ -254,6 +254,20 @@ elif omx_target == 'rcar'
     cdata.set ('HAVE_AACDEC_EXT', 1)
   endif
 
+  # check OMXR_Extension_vp8e.h
+  if cc.has_header (
+    'OMXR_Extension_vp8e.h',
+    args : gst_omx_args)
+    cdata.set ('HAVE_VP8ENC_EXT', 1)
+  endif
+
+  # check OMXR_Extension_aapd.h
+  if cc.has_header (
+      'OMXR_Extension_aapd.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_AACDEC_EXT', 1)
+  endif
+
   # check OMXR_Extension_audio.h
   if cc.has_header (
       'OMXR_Extension_audio.h',
@@ -273,6 +287,13 @@ elif omx_target == 'rcar'
       'OMXR_Extension_video.h',
       args : gst_omx_args)
     cdata.set ('HAVE_VIDEOR_EXT', 1)
+  endif
+
+  # check OMXR_Extension_h265d.h
+  if cc.has_header (
+      'OMXR_Extension_h265d.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_H265DEC_EXT', 1)
   endif
 else
   error ('Unsupported omx target specified. Use the -Dtarget option')
