@@ -2,6 +2,7 @@
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  * Copyright (C) 2017 Xilinx, Inc.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
