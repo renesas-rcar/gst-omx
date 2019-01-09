@@ -19,6 +19,11 @@ H265_H_FILES = \
 	gstomxh265dec.h \
 	gstomxh265enc.h \
 	gstomxh265utils.h
+else
+if USE_OMX_TARGET_RCAR
+H265_C_FILES = gstomxh265dec.c
+H265_H_FILES = gstomxh265dec.h
+endif
 endif
 
 libgstomx_la_SOURCES = \

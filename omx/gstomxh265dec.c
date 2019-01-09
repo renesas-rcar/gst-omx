@@ -2,6 +2,7 @@
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  * Copyright (C) 2017 Xilinx, Inc.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2017, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -26,7 +27,12 @@
 #include <gst/gst.h>
 
 #include "gstomxh265dec.h"
+#ifndef USE_OMX_TARGET_RCAR
 #include "gstomxh265utils.h"
+#endif
+#ifdef HAVE_H265DEC_EXT
+#include "OMXR_Extension_h265d.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_h265_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_h265_dec_debug_category
@@ -62,6 +68,9 @@ gst_omx_h265_dec_class_init (GstOMXH265DecClass * klass)
   videodec_class->set_format = GST_DEBUG_FUNCPTR (gst_omx_h265_dec_set_format);
 
   videodec_class->cdata.default_sink_template_caps = "video/x-h265, "
+#ifdef USE_OMX_TARGET_RCAR
+      "parsed=(boolean) true, "
+#endif
       "alignment=(string) au, "
       "stream-format=(string) byte-stream, "
       "width=(int) [1,MAX], " "height=(int) [1,MAX]";
@@ -84,6 +93,7 @@ static gboolean
 gst_omx_h265_dec_is_format_change (GstOMXVideoDec * dec,
     GstOMXPort * port, GstVideoCodecState * state)
 {
+#ifndef USE_OMX_TARGET_RCAR
   GstCaps *old_caps = NULL;
   GstCaps *new_caps = state->caps;
   GstStructure *old_structure, *new_structure;
@@ -112,10 +122,12 @@ gst_omx_h265_dec_is_format_change (GstOMXVideoDec * dec,
       || g_strcmp0 (old_tier, new_tier)) {
     return TRUE;
   }
+#endif
 
   return FALSE;
 }
 
+#ifndef USE_OMX_TARGET_RCAR
 static gboolean
 set_profile_and_level (GstOMXH265Dec * self, GstVideoCodecState * state)
 {
@@ -176,16 +188,20 @@ unsupported_level:
   GST_ERROR_OBJECT (self, "Unsupported level %s", level_string);
   return FALSE;
 }
+#endif
 
 static gboolean
 gst_omx_h265_dec_set_format (GstOMXVideoDec * dec, GstOMXPort * port,
     GstVideoCodecState * state)
 {
+#ifndef USE_OMX_TARGET_RCAR
   GstOMXVideoDecClass *klass = GST_OMX_VIDEO_DEC_GET_CLASS (dec);
+#endif
   OMX_PARAM_PORTDEFINITIONTYPE port_def;
   OMX_ERRORTYPE err;
 
   gst_omx_port_get_port_definition (port, &port_def);
+#ifndef USE_OMX_TARGET_RCAR
   port_def.format.video.eCompressionFormat =
       (OMX_VIDEO_CODINGTYPE) OMX_VIDEO_CodingHEVC;
   err = gst_omx_port_update_port_definition (port, &port_def);
@@ -196,6 +212,16 @@ gst_omx_h265_dec_set_format (GstOMXVideoDec * dec, GstOMXPort * port,
     if (!set_profile_and_level (GST_OMX_H265_DEC (dec), state))
       return FALSE;
   }
+
+  return TRUE;
+#endif
+
+#ifdef HAVE_H265DEC_EXT
+  port_def.format.video.eCompressionFormat = OMXR_MC_VIDEO_CodingHEVC;
+#endif
+  err = gst_omx_port_update_port_definition (port, &port_def);
+  if (err != OMX_ErrorNone)
+    return FALSE;
 
   return TRUE;
 }
