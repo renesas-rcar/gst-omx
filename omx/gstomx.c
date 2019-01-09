@@ -3431,6 +3431,8 @@ static const GGetTypeFunction types[] = {
 #endif
 #ifdef HAVE_HEVC
       , gst_omx_h265_enc_get_type, gst_omx_h265_dec_get_type
+#elif USE_OMX_TARGET_RCAR
+      , gst_omx_h265_dec_get_type
 #endif
   , gst_omx_wma_dec_get_type, gst_omx_vp8_enc_get_type
 };
