@@ -422,6 +422,12 @@ der])],
            [],
            [AC_INCLUDES_DEFAULT])
 
+dnl check OMXR_Extension_h265d.h
+AC_CHECK_HEADER([OMXR_Extension_h265d.h],
+           [AC_DEFINE(HAVE_H265DEC_EXT, 1, [Define if you have OMXR_Extension_h265d.h header])],
+           [],
+           [AC_INCLUDES_DEFAULT])
+
 dnl *** set variables based on configure arguments ***
 
 dnl set license and copyright notice
