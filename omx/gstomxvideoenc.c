@@ -1757,6 +1757,7 @@ gst_omx_video_enc_disable (GstOMXVideoEnc * self)
   return TRUE;
 }
 
+#ifndef USE_OMX_TARGET_RCAR
 static gboolean
 gst_omx_video_enc_configure_input_buffer (GstOMXVideoEnc * self,
     GstBuffer * input)
@@ -1853,6 +1854,7 @@ gst_omx_video_enc_configure_input_buffer (GstOMXVideoEnc * self,
 
   return TRUE;
 }
+#endif
 
 static gboolean
 gst_omx_video_enc_allocate_in_buffers (GstOMXVideoEnc * self)
@@ -1951,8 +1953,10 @@ gst_omx_video_enc_enable (GstOMXVideoEnc * self, GstBuffer * input)
 
   klass = GST_OMX_VIDEO_ENC_GET_CLASS (self);
 
+#ifndef USE_OMX_TARGET_RCAR
   if (!gst_omx_video_enc_configure_input_buffer (self, input))
     return FALSE;
+#endif
 
   self->input_allocation = gst_omx_video_enc_pick_input_allocation_mode (self,
       input);
@@ -2142,7 +2146,40 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
   }
 
   port_def.format.video.nFrameWidth = info->width;
+  if (port_def.nBufferAlignment)
+    port_def.format.video.nStride =
+        GST_ROUND_UP_N (info->width, port_def.nBufferAlignment);
+  else
+    port_def.format.video.nStride = GST_ROUND_UP_4 (info->width);       /* safe (?) default */
+
   port_def.format.video.nFrameHeight = info->height;
+  if (klass->cdata.hacks & GST_OMX_HACK_HEIGHT_MULTIPLE_16)
+    port_def.format.video.nSliceHeight = GST_ROUND_UP_16 (info->height);
+  else
+    port_def.format.video.nSliceHeight = info->height;
+
+  switch (port_def.format.video.eColorFormat) {
+    case OMX_COLOR_FormatYUV420Planar:
+    case OMX_COLOR_FormatYUV420PackedPlanar:
+      port_def.nBufferSize =
+          (port_def.format.video.nStride * port_def.format.video.nFrameHeight) +
+          2 * ((port_def.format.video.nStride / 2) *
+          ((port_def.format.video.nFrameHeight + 1) / 2));
+      break;
+
+    case OMX_COLOR_FormatYUV420PackedSemiPlanar:
+    case OMX_COLOR_FormatYUV420SemiPlanar:
+      port_def.nBufferSize =
+          (port_def.format.video.nStride * port_def.format.video.nFrameHeight) +
+          (port_def.format.video.nStride *
+          ((port_def.format.video.nFrameHeight + 1) / 2));
+      break;
+
+    default:
+      GST_ERROR_OBJECT (self, "Unsupported port format %x",
+          port_def.format.video.eColorFormat);
+      g_assert_not_reached ();
+  }
 
   if (G_UNLIKELY (klass->cdata.hacks & GST_OMX_HACK_VIDEO_FRAMERATE_INTEGER))
     port_def.format.video.xFramerate =
