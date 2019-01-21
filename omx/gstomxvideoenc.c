@@ -2104,6 +2104,7 @@ check_input_alignment (GstOMXVideoEnc * self, GstMapInfo * map)
 
 /* Check if @inbuf's alignment and stride matches the requirements to use the
  * dynamic buffer mode. */
+#ifndef USE_OMX_TARGET_RCAR
 static gboolean
 can_use_dynamic_buffer_mode (GstOMXVideoEnc * self, GstBuffer * inbuf)
 {
@@ -2146,6 +2147,7 @@ gst_omx_video_enc_pick_input_allocation_mode (GstOMXVideoEnc * self,
   GST_DEBUG_OBJECT (self, "let input buffer allocate its buffers");
   return GST_OMX_BUFFER_ALLOCATION_ALLOCATE_BUFFER;
 }
+#endif
 
 static gboolean
 gst_omx_video_enc_enable (GstOMXVideoEnc * self, GstBuffer * input)
@@ -2157,10 +2159,10 @@ gst_omx_video_enc_enable (GstOMXVideoEnc * self, GstBuffer * input)
 #ifndef USE_OMX_TARGET_RCAR
   if (!gst_omx_video_enc_configure_input_buffer (self, input))
     return FALSE;
-#endif
 
   self->input_allocation = gst_omx_video_enc_pick_input_allocation_mode (self,
       input);
+#endif
   self->input_dmabuf = FALSE;
 
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
@@ -2547,6 +2549,11 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
   gst_omx_video_enc_set_latency (self);
 #endif
 
+#ifdef USE_OMX_TARGET_RCAR
+  if (!gst_omx_video_enc_enable (self, NULL))
+    return FALSE;
+#endif
+
   self->downstream_flow_ret = GST_FLOW_OK;
   return TRUE;
 }
@@ -2900,10 +2907,12 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
   }
 
   if (!self->started) {
+#ifndef USE_OMX_TARGET_RCAR
     if (gst_omx_port_is_flushing (self->enc_out_port)) {
       if (!gst_omx_video_enc_enable (self, frame->input_buffer))
         goto enable_error;
     }
+#endif
 
     GST_DEBUG_OBJECT (self, "Starting task");
     gst_pad_start_task (GST_VIDEO_ENCODER_SRC_PAD (self),
@@ -3238,6 +3247,7 @@ flow_error:
     return self->downstream_flow_ret;
   }
 
+#ifndef USE_OMX_TARGET_RCAR
 enable_error:
   {
     /* Report the OMX error, if any */
@@ -3252,6 +3262,7 @@ enable_error:
     gst_video_codec_frame_unref (frame);
     return GST_FLOW_ERROR;
   }
+#endif
 
 component_error:
   {
