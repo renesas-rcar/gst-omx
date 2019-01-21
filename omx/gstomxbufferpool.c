@@ -694,7 +694,8 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
           pool->port->port_def.eDir == OMX_DirInput)
         /* Propose actual area of encoder to upstream */
         mem = gst_memory_new_wrapped (0, omx_buf->omx_buf->pBuffer,
-            omx_buf->omx_buf->nAllocLen, 0, 0, NULL, NULL);
+            omx_buf->omx_buf->nAllocLen, 0, omx_buf->omx_buf->nAllocLen,
+            NULL, NULL);
       else
         mem = gst_omx_memory_allocator_alloc (pool->allocator, 0, omx_buf);
 
