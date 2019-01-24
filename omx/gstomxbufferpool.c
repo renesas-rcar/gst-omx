@@ -703,6 +703,9 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
   GstFlowReturn ret;
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (bpool);
 
+  if (GST_BUFFER_POOL_IS_FLUSHING (bpool))
+    goto flushing;
+
   if (pool->port->port_def.eDir == OMX_DirOutput) {
     GstBuffer *buf;
 
@@ -754,6 +757,12 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
   }
 
   return ret;
+
+flushing:
+  {
+    GST_DEBUG_OBJECT (pool, "we are flushing");
+    return GST_FLOW_FLUSHING;
+  }
 }
 
 static void
