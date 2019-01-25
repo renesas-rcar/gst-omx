@@ -493,6 +493,8 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
   GstOMXBuffer *omx_buf;
 
   g_return_val_if_fail (pool->allocating, GST_FLOW_ERROR);
+  g_return_val_if_fail (pool->port->buffers->len > pool->current_buffer_index,
+      GST_FLOW_ERROR);
 
   omx_buf = g_ptr_array_index (pool->port->buffers, pool->current_buffer_index);
   g_return_val_if_fail (omx_buf != NULL, GST_FLOW_ERROR);
@@ -500,6 +502,8 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
   if (pool->other_pool) {
     guint i, n;
 
+    g_return_val_if_fail (pool->buffers->len > pool->current_buffer_index,
+        GST_FLOW_ERROR);
     buf = g_ptr_array_index (pool->buffers, pool->current_buffer_index);
     g_assert (pool->other_pool == buf->pool);
     gst_object_replace ((GstObject **) & buf->pool, NULL);
@@ -713,6 +717,8 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
     GstBuffer *buf;
 
     g_return_val_if_fail (pool->current_buffer_index != -1, GST_FLOW_ERROR);
+    g_return_val_if_fail (pool->buffers->len > pool->current_buffer_index,
+        GST_FLOW_ERROR);
 
     buf = g_ptr_array_index (pool->buffers, pool->current_buffer_index);
     g_return_val_if_fail (buf != NULL, GST_FLOW_ERROR);
