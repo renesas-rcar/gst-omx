@@ -346,7 +346,7 @@ enum
 }
 
 G_DEFINE_ABSTRACT_TYPE_WITH_CODE (GstOMXVideoEnc, gst_omx_video_enc,
-    GST_TYPE_VIDEO_ENCODER, do_init);
+    GST_TYPE_VIDEO_ENCODER, G_ADD_PRIVATE(GstOMXVideoEnc) do_init);
 
 static void
 gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
@@ -354,8 +354,6 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
   GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
   GstVideoEncoderClass *video_encoder_class = GST_VIDEO_ENCODER_CLASS (klass);
-
-  g_type_class_add_private (klass, sizeof (GstOMXVideoEncPrivate));
 
   gobject_class->finalize = gst_omx_video_enc_finalize;
   gobject_class->set_property = gst_omx_video_enc_set_property;
@@ -1797,9 +1795,7 @@ gst_omx_video_enc_start (GstVideoEncoder * encoder)
   /* Prepare arrays to store dmabuf_fd, dmabuf_id and address for
    * use-dmabuf mode's handling
    */
-  self->priv =
-      G_TYPE_INSTANCE_GET_PRIVATE (self, GST_TYPE_OMX_VIDEO_ENC,
-      GstOMXVideoEncPrivate);
+  self->priv = gst_omx_video_enc_get_instance_private (self);
   self->priv->fd_array = g_array_new (FALSE, FALSE, sizeof (gint));
   self->priv->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
   self->priv->addr_array = g_array_new (FALSE, FALSE, sizeof (guint));
