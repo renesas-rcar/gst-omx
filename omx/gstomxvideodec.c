@@ -1214,6 +1214,8 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
       self->out_port_pool = NULL;
     } else {
       GST_OMX_BUFFER_POOL (self->out_port_pool)->allocating = FALSE;
+      if (!self->use_buffers)
+        gst_buffer_pool_set_active (pool, FALSE);
     }
   } else if (self->out_port_pool) {
     gst_object_unref (self->out_port_pool);
