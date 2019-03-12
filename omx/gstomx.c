@@ -385,6 +385,9 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
         GstOMXBuffer *buf = msg->content.buffer_done.buffer->pAppPrivate;
         GstOMXPort *port;
 
+        if (!buf)
+          break;
+
         port = buf->port;
 
         if (msg->content.buffer_done.empty) {
