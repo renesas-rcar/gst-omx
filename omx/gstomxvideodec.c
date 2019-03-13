@@ -3230,9 +3230,11 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
       GST_DEBUG_OBJECT (self, "Discard OMX pool from downstream");
       gst_query_remove_nth_allocation_pool (query, i);
     } else {
+#ifndef USE_OMX_TARGET_RCAR
       GST_DEBUG_OBJECT (self,
           "Try using downstream buffers with OMX_UseBuffer");
       self->use_buffers = TRUE;
+#endif
       i++;
     }
 
