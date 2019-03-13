@@ -3195,6 +3195,7 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
 #endif /* defined (HAVE_GST_GL) */
 
   self->use_buffers = FALSE;
+#ifndef USE_OMX_TARGET_RCAR
   if (gst_query_get_n_allocation_pools (query) > 0) {
     gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, NULL, NULL);
     if (pool) {
@@ -3204,7 +3205,7 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
       gst_object_unref (pool);
     }
   }
-
+#endif
   if (!GST_VIDEO_DECODER_CLASS
       (gst_omx_video_dec_parent_class)->decide_allocation (bdec, query))
     return FALSE;
