@@ -2453,6 +2453,11 @@ gst_omx_video_dec_enable (GstOMXVideoDec * self, GstBuffer * input)
   gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, FALSE);
   gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
 
+  /* Populate (FillThisBuffer) all output buffers to the component so
+   * that gst_omx_video_dec_loop() can detect RECONFIGURE in initial loop */
+  if (gst_omx_port_populate (self->dec_out_port) != OMX_ErrorNone)
+    return FALSE;
+
   if (gst_omx_component_get_last_error (self->dec) != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
         gst_omx_component_get_last_error_string (self->dec),
