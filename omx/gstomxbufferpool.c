@@ -3,6 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
+ * Copyright (C) 2019, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -446,34 +447,41 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     gsize offset[GST_VIDEO_MAX_PLANES] = { 0, };
     gint stride[GST_VIDEO_MAX_PLANES] = { nstride, 0, };
 
+    buf = gst_buffer_new ();
+
     if (pool->output_mode == GST_OMX_BUFFER_MODE_DMABUF) {
       gint fd;
       GstMapInfo map;
+      gint n_planes;
+      gint i;
 
-      fd = GPOINTER_TO_INT (omx_buf->omx_buf->pBuffer);
+      n_planes = 1;
 
-      mem =
-          gst_dmabuf_allocator_alloc (pool->allocator, fd,
-          omx_buf->omx_buf->nAllocLen);
+      for (i = 0; i < n_planes; i++) {
+        fd = GPOINTER_TO_INT (omx_buf->omx_buf->pBuffer);
 
-      if (!gst_caps_features_contains (gst_caps_get_features (pool->caps, 0),
-              GST_CAPS_FEATURE_MEMORY_DMABUF)) {
-        /* Check if the memory is actually mappable */
-        if (!gst_memory_map (mem, &map, GST_MAP_READWRITE)) {
-          GST_ERROR_OBJECT (pool,
-              "dmabuf memory is not mappable but caps does not have the 'memory:DMABuf' feature");
-          gst_memory_unref (mem);
-          return GST_FLOW_ERROR;
+        mem =
+            gst_dmabuf_allocator_alloc (pool->allocator, fd,
+            omx_buf->omx_buf->nAllocLen);
+        if (!gst_caps_features_contains (gst_caps_get_features (pool->caps, 0),
+                GST_CAPS_FEATURE_MEMORY_DMABUF)) {
+          /* Check if the memory is actually mappable */
+          if (!gst_memory_map (mem, &map, GST_MAP_READWRITE)) {
+            GST_ERROR_OBJECT (pool,
+                "dmabuf memory is not mappable but caps does not have the 'memory:DMABuf' feature");
+            gst_memory_unref (mem);
+            gst_buffer_unref (buf);
+            return GST_FLOW_ERROR;
+          }
+          gst_memory_unmap (mem, &map);
         }
-
-        gst_memory_unmap (mem, &map);
+        gst_buffer_append_memory (buf, mem);
       }
     } else {
       mem = gst_omx_memory_allocator_alloc (pool->allocator, 0, omx_buf);
+      gst_buffer_append_memory (buf, mem);
     }
 
-    buf = gst_buffer_new ();
-    gst_buffer_append_memory (buf, mem);
     g_ptr_array_add (pool->buffers, buf);
 
     switch (GST_VIDEO_INFO_FORMAT (&pool->video_info)) {
