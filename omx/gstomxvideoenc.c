@@ -288,7 +288,8 @@ enum
   PROP_SLICE_SIZE,
   PROP_DEPENDENT_SLICE,
   PROP_DEFAULT_ROI_QUALITY,
-  PROP_SCAN_TYPE
+  PROP_SCAN_TYPE,
+  PROP_NO_COPY
 };
 
 /* FIXME: Better defaults */
@@ -380,6 +381,12 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
           GST_TYPE_OMX_VIDEO_ENC_SCAN_TYPE,
           GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+
+  g_object_class_install_property (gobject_class, PROP_NO_COPY,
+      g_param_spec_boolean ("no-copy", "Propose buffer to upstream",
+          "Whether or not to share input buffer (userptr) with upstream element",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
@@ -543,6 +550,7 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->quant_p_frames = GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
   self->quant_b_frames = GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
   self->scan_type = GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT;
+  self->no_copy = FALSE;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   self->qp_mode = GST_OMX_VIDEO_ENC_QP_MODE_DEFAULT;
   self->min_qp = GST_OMX_VIDEO_ENC_MIN_QP_DEFAULT;
@@ -1107,6 +1115,9 @@ gst_omx_video_enc_set_property (GObject * object, guint prop_id,
     case PROP_SCAN_TYPE:
       self->scan_type = g_value_get_enum (value);
       break;
+    case PROP_NO_COPY:
+      self->no_copy = g_value_get_boolean (value);
+      break;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     case PROP_QP_MODE:
       self->qp_mode = g_value_get_enum (value);
@@ -1189,6 +1200,9 @@ gst_omx_video_enc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_SCAN_TYPE:
       g_value_set_enum (value, self->scan_type);
+      break;
+    case PROP_NO_COPY:
+      g_value_set_boolean (value, self->no_copy);
       break;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     case PROP_QP_MODE:
@@ -3186,7 +3200,6 @@ gst_omx_video_enc_drain (GstOMXVideoEnc * self)
   return GST_FLOW_OK;
 }
 
-#ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
 static gboolean
 pool_request_allocate_cb (GstBufferPool * pool, GstOMXVideoEnc * self)
 {
@@ -3213,7 +3226,8 @@ pool_request_allocate_cb (GstBufferPool * pool, GstOMXVideoEnc * self)
     return FALSE;
 
   self->input_allocation = GST_OMX_BUFFER_ALLOCATION_ALLOCATE_BUFFER;
-  self->input_dmabuf = TRUE;
+  if (!self->no_copy)
+    self->input_dmabuf = TRUE;
 
   /* gst_omx_port_acquire_buffer() will fail if the input port is stil flushing
    * which will prevent upstream from acquiring buffers. */
@@ -3230,7 +3244,8 @@ create_input_pool (GstOMXVideoEnc * self, GstCaps * caps, guint num_buffers)
 
   pool =
       gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->enc,
-      self->enc_in_port, GST_OMX_BUFFER_MODE_DMABUF);
+      self->enc_in_port, self->no_copy ? GST_OMX_BUFFER_MODE_SYSTEM_MEMORY :
+      GST_OMX_BUFFER_MODE_DMABUF);
 
   g_signal_connect_object (pool, "allocate",
       G_CALLBACK (pool_request_allocate_cb), self, 0);
@@ -3248,7 +3263,6 @@ create_input_pool (GstOMXVideoEnc * self, GstCaps * caps, guint num_buffers)
 
   return pool;
 }
-#endif
 
 static gboolean
 gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
@@ -3276,14 +3290,13 @@ gst_omx_video_enc_propose_allocation (GstVideoEncoder * encoder,
 
   num_buffers = self->enc_in_port->port_def.nBufferCountMin + 1;
 
-#ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
-  /* dmabuf export is currently only supported on Zynqultrascaleplus */
-  pool = create_input_pool (self, caps, num_buffers);
-  if (!pool) {
-    GST_WARNING_OBJECT (self, "Failed to create and configure pool");
-    return FALSE;
+  if (self->no_copy) {
+    pool = create_input_pool (self, caps, num_buffers);
+    if (!pool) {
+      GST_WARNING_OBJECT (self, "Failed to create and configure pool");
+      return FALSE;
+    }
   }
-#endif
 
   GST_DEBUG_OBJECT (self,
       "request at least %d buffers of size %" G_GSIZE_FORMAT, num_buffers,
