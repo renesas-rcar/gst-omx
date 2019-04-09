@@ -1803,34 +1803,10 @@ gst_omx_video_enc_disable (GstOMXVideoEnc * self)
 }
 
 static gboolean
-gst_omx_video_enc_configure_input_buffer (GstOMXVideoEnc * self,
-    GstBuffer * input)
+gst_omx_video_enc_update_input_port (GstOMXVideoEnc * self,
+    OMX_PARAM_PORTDEFINITIONTYPE port_def, guint stride, guint slice_height)
 {
   GstOMXVideoEncClass *klass = GST_OMX_VIDEO_ENC_GET_CLASS (self);
-  GstVideoInfo *info = &self->input_state->info;
-  OMX_PARAM_PORTDEFINITIONTYPE port_def;
-  GstVideoMeta *meta;
-  guint stride, slice_height;
-
-  gst_omx_port_get_port_definition (self->enc_in_port, &port_def);
-
-  meta = gst_buffer_get_video_meta (input);
-  if (meta) {
-    /* Use the stride and slice height of the first plane */
-    stride = meta->stride[0];
-    g_assert (stride != 0);
-    slice_height = (meta->offset[1] - meta->offset[0]) / stride;
-
-    GST_DEBUG_OBJECT (self,
-        "adjusting stride (%d) and slice-height (%d) using input buffer meta",
-        stride, slice_height);
-  } else {
-    GST_WARNING_OBJECT (self,
-        "input buffer doesn't provide video meta, can't adjust stride and slice height");
-
-    stride = info->stride[0];
-    slice_height = info->height;
-  }
 
   if (port_def.nBufferAlignment)
     port_def.format.video.nStride =
@@ -1911,6 +1887,39 @@ gst_omx_video_enc_ensure_nb_in_buffers (GstOMXVideoEnc * self)
   }
 
   return TRUE;
+}
+
+static gboolean
+gst_omx_video_enc_configure_input_buffer (GstOMXVideoEnc * self,
+    GstBuffer * input)
+{
+  GstVideoInfo *info = &self->input_state->info;
+  OMX_PARAM_PORTDEFINITIONTYPE port_def;
+  GstVideoMeta *meta;
+  guint stride, slice_height;
+
+  gst_omx_port_get_port_definition (self->enc_in_port, &port_def);
+
+  meta = gst_buffer_get_video_meta (input);
+  if (meta) {
+    /* Use the stride and slice height of the first plane */
+    stride = meta->stride[0];
+    g_assert (stride != 0);
+    slice_height = (meta->offset[1] - meta->offset[0]) / stride;
+
+    GST_DEBUG_OBJECT (self,
+        "adjusting stride (%d) and slice-height (%d) using input buffer meta",
+        stride, slice_height);
+  } else {
+    GST_WARNING_OBJECT (self,
+        "input buffer doesn't provide video meta, can't adjust stride and slice height");
+
+    stride = info->stride[0];
+    slice_height = info->height;
+  }
+
+  return gst_omx_video_enc_update_input_port (self, port_def, stride,
+      slice_height);
 }
 
 static gboolean
