@@ -28,6 +28,10 @@
 
 #include "gstomx.h"
 
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+#include "OMXR_Extension_video.h"
+#endif
+
 G_BEGIN_DECLS
 
 #define GST_TYPE_OMX_VIDEO_ENC \
@@ -46,6 +50,16 @@ G_BEGIN_DECLS
 typedef struct _GstOMXVideoEnc GstOMXVideoEnc;
 typedef struct _GstOMXVideoEncClass GstOMXVideoEncClass;
 
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+typedef struct fd_table fd_table;
+
+struct fd_table
+{
+  guint fd;
+  OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *ext_addr;
+};
+#endif
+
 struct _GstOMXVideoEnc
 {
   GstVideoEncoder parent;
@@ -63,6 +77,17 @@ struct _GstOMXVideoEnc
   gboolean disabled;
   /* TRUE to share buffers (userptr) to upstream */
   gboolean no_copy;
+  /* TRUE to receive dmabuf fd from upstream */
+  gboolean import_dmabuf;
+
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+  /* Array contain table of top fd and physical address of GstBuffer */
+  GArray *fd_table_array;
+  /* Array contain extension address */
+  GArray *extaddr_array;
+  /* Array contain id when using mmngrbuf to import fd */
+  GArray *id_array;
+#endif
 
   GstClockTime last_upstream_ts;
 
