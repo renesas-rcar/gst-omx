@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2019, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -48,6 +49,13 @@ G_BEGIN_DECLS
 
 typedef struct _GstOMXVideoDec GstOMXVideoDec;
 typedef struct _GstOMXVideoDecClass GstOMXVideoDecClass;
+typedef struct _crop_info crop_info;
+
+struct _crop_info
+{
+  gint crop_left;
+  gint crop_top;
+};
 
 struct _GstOMXVideoDec
 {
@@ -111,6 +119,8 @@ struct _GstOMXVideoDec
   gboolean lossy_compress;
   /* TRUE when set_property() runs */
   gboolean has_set_property;
+  /* Set TRUE to crop as info of conf_win_left_offset and conf_win_top_offset */
+  gboolean enable_crop;
 };
 
 struct _GstOMXVideoDecClass
