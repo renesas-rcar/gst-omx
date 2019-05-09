@@ -88,7 +88,8 @@ enum
 {
   PROP_0,
   PROP_INTERNAL_ENTROPY_BUFFERS,
-  PROP_USE_DMABUF
+  PROP_USE_DMABUF,
+  PROP_NO_COPY
 };
 
 #define GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT (5)
@@ -118,6 +119,10 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     case PROP_USE_DMABUF:
       self->use_dmabuf = g_value_get_boolean (value);
       break;
+    case PROP_NO_COPY:
+      self->no_copy = g_value_get_boolean (value);
+      self->use_dmabuf = FALSE;
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -138,6 +143,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
 #endif
     case PROP_USE_DMABUF:
       g_value_set_boolean (value, self->use_dmabuf);
+      break;
+    case PROP_NO_COPY:
+      g_value_set_boolean (value, self->no_copy);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -170,6 +178,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
       g_param_spec_boolean ("use-dmabuf", "Use dmabuffer ",
           "Whether or not to transfer decoded data using dmabuf",
           TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_NO_COPY,
+      g_param_spec_boolean ("no-copy", "No copy",
+          "Whether or not to transfer decoded data without copy",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
@@ -834,11 +847,10 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
     goto done;
   }
 #endif
-
-  if (!self->use_dmabuf)
+  if (!self->no_copy && !self->dmabuf)
     caps = NULL;
 
-  if (caps || self->use_dmabuf)
+  if (caps || self->no_copy || self->use_dmabuf)
     self->out_port_pool =
         gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->dec, port,
         self->dmabuf ? GST_OMX_BUFFER_MODE_DMABUF :
@@ -1164,7 +1176,7 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
 
   err = OMX_ErrorNone;
 
-  if (caps || self->use_dmabuf) {
+  if (caps || self->no_copy || self->use_dmabuf) {
     config = gst_buffer_pool_get_config (self->out_port_pool);
 
     if (add_videometa)
