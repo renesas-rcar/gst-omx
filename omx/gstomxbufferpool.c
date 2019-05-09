@@ -466,7 +466,8 @@ gst_omx_buffer_pool_create_dmabuf_memory (gint num_plane,
    * memory for plane must increase to handle for this case */
   plane_size_ext = GST_ROUND_UP_N (plane_size + page_offset, page_size);
 
-  if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
+  if (!gst_omx_buffer_pool_export_dmabuf (self,
+          GST_ROUND_DOWN_N (phys_addr, page_size),
           plane_size_ext, &dmabuf_id, &dmabuf_fd)) {
     GST_ERROR_OBJECT (self, "dmabuf exporting failed");
     return NULL;
