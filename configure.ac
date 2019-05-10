@@ -362,6 +362,31 @@ if test "x$ac_cv_omx_target" = "xzynqultrascaleplus"; then
     AC_CHECK_HEADER([OMX_Allegro.h], [], [AC_ERROR([Need Allegro OMX headers to build for Zynq UltraScale+. Use --with-omx-header-path= argument to specify the path of those headers.])], [AC_INCLUDES_DEFAULT])
 fi
 
+dnl check for dmabuf support
+AC_ARG_ENABLE([dmabuf],
+             [AS_HELP_STRING([--disable-dmabuf],
+                             [Disable dmabuf even if you have mmngrbuf library])],
+             [],
+             [enable_dmabuf=yes]
+             )
+
+if test "x${enable_dmabuf}" = "xyes"; then
+  dnl check mmngrbuf library to use dmabuf exporter
+  AC_CHECK_LIB([mmngrbuf], [mmngr_export_start_in_user],
+             [have_mmngrbuf=yes
+              GST_LIBS="$GST_LIBS -lmmngrbuf"
+              AC_DEFINE(HAVE_MMNGRBUF, 1, [Define if you have mmngrbuf library])
+             ])
+  dnl check OMXR_Extension_vdcmn.h
+  AC_CHECK_HEADER([OMXR_Extension_vdcmn.h],
+             [have_exvdcmn=yes],
+             [],
+             [AC_INCLUDES_DEFAULT])
+ if test "x${have_mmngrbuf}" = "xyes" -a "x${have_exvdcmn}" = "xyes"; then
+   AC_DEFINE(USE_RCAR_DMABUF, 1, [Define if you have OMXR_Extension_vdcmn.h header and mmngrbuf])
+ fi
+fi
+
 dnl *** set variables based on configure arguments ***
 
 dnl set license and copyright notice

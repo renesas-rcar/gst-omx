@@ -26,8 +26,13 @@
 #endif
 
 #include "gstomxbufferpool.h"
-
+#include "gstomxvideodec.h"
 #include <gst/allocators/gstdmabuf.h>
+#ifdef USE_RCAR_DMABUF
+#include "mmngr_buf_user_public.h"
+#include "OMXR_Extension_vdcmn.h"
+#endif
+#include <unistd.h>             /* getpagesize() */
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_buffer_pool_debug_category);
 #define GST_CAT_DEFAULT gst_omx_buffer_pool_debug_category
@@ -397,6 +402,87 @@ wrong_video_caps:
   }
 }
 
+#if defined USE_RCAR_DMABUF
+static gboolean
+gst_omx_buffer_pool_export_dmabuf (GstOMXBufferPool * pool,
+    guint phys_addr, gint size, gint * id_export, gint * dmabuf_fd)
+{
+  gint res;
+
+  res =
+      mmngr_export_start_in_user_ext (id_export,
+      (gsize) size, phys_addr, dmabuf_fd, NULL);
+  if (res != R_MM_OK) {
+    GST_ERROR_OBJECT (pool,
+        "mmngr_export_start_in_user failed (phys_addr:0x%08x)", phys_addr);
+    return FALSE;
+  }
+  GST_DEBUG_OBJECT (pool,
+      "Export dmabuf:%d id_export:%d (phys_addr:0x%08x)", *dmabuf_fd,
+      *id_export, phys_addr);
+
+  return TRUE;
+}
+
+static GstMemory *
+gst_omx_buffer_pool_create_dmabuf_memory (gint num_plane,
+    GstOMXBufferPool * self, GstOMXBuffer * omx_buf, gint stride, gint slice)
+{
+  gint dmabuf_fd;
+  gint plane_size;
+  gint plane_size_ext;
+  gint dmabuf_id;
+  gint page_offset;
+  gint page_size;
+  guint phys_addr;
+  guint offset = 0;
+  GstMemory *mem;
+  OMXR_MC_VIDEO_DECODERESULTTYPE *decode_res;
+
+  page_size = getpagesize ();
+
+  if (num_plane) {
+    if (num_plane == 1)
+      offset = stride * slice;
+    else
+      offset = stride * slice + stride / 2 * slice / 2;
+
+    if (GST_VIDEO_INFO_FORMAT (&self->video_info) == GST_VIDEO_FORMAT_I420)
+      stride = stride / 2;
+    slice = slice / 2;
+  }
+
+  decode_res =
+      (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->omx_buf->pOutputPortPrivate;
+
+  phys_addr = (guintptr) decode_res->pvPhysImageAddressY + offset;
+  /* Calculate offset between physical address and page boundary */
+  page_offset = phys_addr & (page_size - 1);
+
+  plane_size = stride * slice;
+
+  /* When downstream plugins do mapping from dmabuf fd it requires
+   * mapping from boundary page and size align for page size so
+   * memory for plane must increase to handle for this case */
+  plane_size_ext = GST_ROUND_UP_N (plane_size + page_offset, page_size);
+
+  if (!gst_omx_buffer_pool_export_dmabuf (self, phys_addr,
+          plane_size_ext, &dmabuf_id, &dmabuf_fd)) {
+    GST_ERROR_OBJECT (self, "dmabuf exporting failed");
+    return NULL;
+  }
+
+  g_array_append_val (self->id_array, dmabuf_id);
+  /* Set offset's information */
+  mem = gst_dmabuf_allocator_alloc (self->allocator, dmabuf_fd, plane_size_ext);
+  mem->offset = page_offset;
+  /* Only allow to access plane size */
+  mem->size = plane_size;
+
+  return mem;
+}
+#endif
+
 static GstFlowReturn
 gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     GstBuffer ** buffer, GstBufferPoolAcquireParams * params)
@@ -450,19 +536,33 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     buf = gst_buffer_new ();
 
     if (pool->output_mode == GST_OMX_BUFFER_MODE_DMABUF) {
-      gint fd;
       GstMapInfo map;
       gint n_planes;
       gint i;
 
+#ifndef USE_OMX_TARGET_RCAR
       n_planes = 1;
-
+#else
+      n_planes = GST_VIDEO_INFO_N_PLANES (&pool->video_info);
+#endif
       for (i = 0; i < n_planes; i++) {
+#ifndef USE_OMX_TARGET_RCAR
+        gint fd;
+
         fd = GPOINTER_TO_INT (omx_buf->omx_buf->pBuffer);
 
         mem =
             gst_dmabuf_allocator_alloc (pool->allocator, fd,
             omx_buf->omx_buf->nAllocLen);
+#else
+        mem = gst_omx_buffer_pool_create_dmabuf_memory (i, pool,
+            omx_buf, nstride, nslice);
+#endif
+        if (!mem) {
+          GST_ERROR_OBJECT (pool, "Can not create dmabuf");
+          gst_buffer_unref (buf);
+          return GST_FLOW_ERROR;
+        }
         if (!gst_caps_features_contains (gst_caps_get_features (pool->caps, 0),
                 GST_CAPS_FEATURE_MEMORY_DMABUF)) {
           /* Check if the memory is actually mappable */
@@ -614,7 +714,8 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
     ret = GST_FLOW_OK;
 
     /* If it's our own memory we have to set the sizes */
-    if (!pool->other_pool) {
+    if ((!pool->other_pool) &&
+        ((GST_OMX_VIDEO_DEC (pool->element)->dmabuf) == FALSE)) {
       GstMemory *mem = gst_buffer_peek_memory (*buffer, 0);
       GstOMXBuffer *omx_buf;
 
@@ -686,6 +787,24 @@ gst_omx_buffer_pool_finalize (GObject * object)
 {
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (object);
 
+#ifdef USE_RCAR_DMABUF
+  if (GST_OMX_VIDEO_DEC (pool->element)->dmabuf) {
+    gint i;
+    gint dmabuf_id;
+
+    for (i = 0; i < pool->id_array->len; i++) {
+      dmabuf_id = g_array_index (pool->id_array, gint, i);
+      if (dmabuf_id >= 0) {
+        GST_DEBUG_OBJECT (pool, "mmngr_export_end_in_user (%d)", dmabuf_id);
+        mmngr_export_end_in_user_ext (dmabuf_id);
+      } else {
+        GST_WARNING_OBJECT (pool, "Invalid dmabuf_id");
+      }
+    }
+  }
+  g_array_free (pool->id_array, TRUE);
+#endif
+
   if (pool->element)
     gst_object_unref (pool->element);
   pool->element = NULL;
@@ -736,6 +855,9 @@ static void
 gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 {
   pool->buffers = g_ptr_array_new ();
+#if USE_RCAR_DMABUF
+  pool->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
+#endif
 }
 
 GstBufferPool *
