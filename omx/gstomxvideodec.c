@@ -319,6 +319,8 @@ gst_omx_video_dec_open (GstVideoDecoder * decoder)
     else
       self->dmabuf = TRUE;
   }
+#elif defined USE_RCAR_DMABUF
+    self->dmabuf = TRUE;
 #endif
 
   if (!self->dec_in_port || !self->dec_out_port)
