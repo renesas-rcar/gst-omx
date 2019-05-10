@@ -88,6 +88,7 @@ enum
 {
   PROP_0,
   PROP_INTERNAL_ENTROPY_BUFFERS,
+  PROP_USE_DMABUF
 };
 
 #define GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT (5)
@@ -106,9 +107,7 @@ static void
 gst_omx_video_dec_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
-#ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   GstOMXVideoDec *self = GST_OMX_VIDEO_DEC (object);
-#endif
 
   switch (prop_id) {
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
@@ -116,6 +115,9 @@ gst_omx_video_dec_set_property (GObject * object, guint prop_id,
       self->internal_entropy_buffers = g_value_get_uint (value);
       break;
 #endif
+    case PROP_USE_DMABUF:
+      self->use_dmabuf = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -126,9 +128,7 @@ static void
 gst_omx_video_dec_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-#ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   GstOMXVideoDec *self = GST_OMX_VIDEO_DEC (object);
-#endif
 
   switch (prop_id) {
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
@@ -136,6 +136,9 @@ gst_omx_video_dec_get_property (GObject * object, guint prop_id,
       g_value_set_uint (value, self->internal_entropy_buffers);
       break;
 #endif
+    case PROP_USE_DMABUF:
+      g_value_set_boolean (value, self->use_dmabuf);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -163,6 +166,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 #endif
+  g_object_class_install_property (gobject_class, PROP_USE_DMABUF,
+      g_param_spec_boolean ("use-dmabuf", "Use dmabuffer ",
+          "Whether or not to transfer decoded data using dmabuf",
+          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_dec_change_state);
@@ -201,7 +209,9 @@ gst_omx_video_dec_init (GstOMXVideoDec * self)
   self->internal_entropy_buffers =
       GST_OMX_VIDEO_DEC_INTERNAL_ENTROPY_BUFFERS_DEFAULT;
 #endif
-
+#ifdef USE_RCAR_DMABUF
+  self->use_dmabuf = TRUE;
+#endif
   gst_video_decoder_set_packetized (GST_VIDEO_DECODER (self), TRUE);
   gst_video_decoder_set_use_default_pad_acceptcaps (GST_VIDEO_DECODER_CAST
       (self), TRUE);
@@ -304,7 +314,8 @@ gst_omx_video_dec_open (GstVideoDecoder * decoder)
   GST_DEBUG_OBJECT (self, "Configure decoder output to export dmabuf");
   self->dmabuf = gst_omx_port_set_dmabuf (self->dec_out_port, TRUE);
 #elif defined USE_RCAR_DMABUF
-  self->dmabuf = TRUE;
+  if (self->use_dmabuf)
+    self->dmabuf = TRUE;
 #endif
 
   if (!self->dec_in_port || !self->dec_out_port)
@@ -824,7 +835,10 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
   }
 #endif
 
-  if (caps)
+  if (!self->use_dmabuf)
+    caps = NULL;
+
+  if (caps || self->use_dmabuf)
     self->out_port_pool =
         gst_omx_buffer_pool_new (GST_ELEMENT_CAST (self), self->dec, port,
         self->dmabuf ? GST_OMX_BUFFER_MODE_DMABUF :
@@ -1150,7 +1164,7 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
 
   err = OMX_ErrorNone;
 
-  if (caps) {
+  if (caps || self->use_dmabuf) {
     config = gst_buffer_pool_get_config (self->out_port_pool);
 
     if (add_videometa)
