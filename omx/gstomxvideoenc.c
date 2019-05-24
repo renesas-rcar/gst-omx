@@ -50,7 +50,7 @@
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
 
-#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
 static gboolean gst_omx_video_enc_set_use_buffer (GstOMXVideoEnc * self);
 #endif
 
