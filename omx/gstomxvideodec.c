@@ -1736,6 +1736,12 @@ update_output_state (GstOMXVideoDec * self, const crop_info * cinfo)
       GST_ERROR_OBJECT (self, "Negotiation failed");
       return FALSE;
     }
+
+    if (self->out_port_pool) {
+      GstBufferPool *pool =
+          gst_video_decoder_get_buffer_pool (GST_VIDEO_DECODER (self));
+      gst_buffer_pool_set_active (pool, FALSE);
+    }
   }
 
   return TRUE;
