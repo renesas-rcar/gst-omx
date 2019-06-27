@@ -2300,11 +2300,9 @@ update_input_port_buffer_count (GstOMXVideoEnc * self, GstBuffer * input)
     return FALSE;
   }
 
-  if (min != max) {
-    GST_ERROR_OBJECT (self,
+  if (min != max)
+    GST_WARNING_OBJECT (self,
         "We can't handle dynamic changing of number of buffers");
-    return FALSE;
-  }
 
   if (!gst_omx_port_update_buffer_count_actual (self->enc_in_port, min))
     return FALSE;
