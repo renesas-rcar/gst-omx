@@ -68,7 +68,8 @@ enum
   PROP_LOOP_FILTER_MODE,
   PROP_REF_FRAMES,
 #ifdef USE_OMX_TARGET_RCAR
-  PROP_SEND_EOS
+  PROP_SEND_EOS,
+  PROP_USE_INCAPS_HEADER
 #endif
 };
 
@@ -90,6 +91,7 @@ enum
 #define GST_OMX_H264_VIDEO_ENC_REF_FRAMES_MIN 0
 #define GST_OMX_H264_VIDEO_ENC_REF_FRAMES_MAX G_MAXUINT
 #define GST_OMX_H264_VIDEO_ENC_SEND_EOS_DEFAULT      FALSE
+#define GST_OMX_H264_VIDEO_ENC_USE_INCAPS_HEADER_DEFAULT      FALSE
 #endif
 
 /* class initialization */
@@ -243,6 +245,15 @@ gst_omx_h264_enc_class_init (GstOMXH264EncClass * klass)
           GST_OMX_H264_VIDEO_ENC_SEND_EOS_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+
+  g_object_class_install_property (gobject_class, PROP_USE_INCAPS_HEADER,
+      g_param_spec_boolean ("use-incaps-header",
+          "Caps codec header",
+          "Send codec header via caps"
+          "(deprecated, not necessary now and can leads to performance deterioration)",
+          GST_OMX_H264_VIDEO_ENC_USE_INCAPS_HEADER_DEFAULT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY | G_PARAM_DEPRECATED));
 #endif
 
   basevideoenc_class->flush = gst_omx_h264_enc_flush;
@@ -303,6 +314,11 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
     case PROP_SEND_EOS:
       self->send_eos = g_value_get_boolean (value);
       break;
+    case PROP_USE_INCAPS_HEADER:
+      GST_WARNING_OBJECT (self,
+          "The option \"use_incaps_header\" is deprecated");
+      self->use_incaps_header = g_value_get_boolean (value);
+      break;
 #endif
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -348,6 +364,9 @@ gst_omx_h264_enc_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_SEND_EOS:
       g_value_set_boolean (value, self->send_eos);
       break;
+    case PROP_USE_INCAPS_HEADER:
+      g_value_set_boolean (value, self->use_incaps_header);
+      break;
 #endif
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -374,6 +393,7 @@ gst_omx_h264_enc_init (GstOMXH264Enc * self)
   self->ref_frames = GST_OMX_H264_VIDEO_ENC_REF_FRAMES_DEFAULT;
 #ifdef USE_OMX_TARGET_RCAR
   self->send_eos = GST_OMX_H264_VIDEO_ENC_SEND_EOS_DEFAULT;
+  self->use_incaps_header = GST_OMX_H264_VIDEO_ENC_USE_INCAPS_HEADER_DEFAULT;
 #endif
 }
 
@@ -982,6 +1002,14 @@ gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc * enc, GstOMXPort * port,
     GstOMXBuffer * buf, GstVideoCodecFrame * frame)
 {
   GstOMXH264Enc *self = GST_OMX_H264_ENC (enc);
+
+#ifdef USE_OMX_TARGET_RCAR
+  if (self->use_incaps_header)
+    return
+        GST_OMX_VIDEO_ENC_CLASS
+        (gst_omx_h264_enc_parent_class)->handle_output_frame (enc, port, buf,
+        frame);
+#endif
 
   if (buf->omx_buf->nFlags & OMX_BUFFERFLAG_CODECCONFIG) {
     /* The codec data is SPS/PPS with a startcode => bytestream stream format
