@@ -84,9 +84,15 @@ enum
 #define GST_OMX_H264_VIDEO_ENC_ENTROPY_MODE_DEFAULT (0xffffffff)
 #define GST_OMX_H264_VIDEO_ENC_CONSTRAINED_INTRA_PREDICTION_DEFAULT (FALSE)
 #define GST_OMX_H264_VIDEO_ENC_LOOP_FILTER_MODE_DEFAULT (0xffffffff)
+#ifndef USE_OMX_TARGET_RCAR
 #define GST_OMX_H264_VIDEO_ENC_REF_FRAMES_DEFAULT 0
 #define GST_OMX_H264_VIDEO_ENC_REF_FRAMES_MIN 0
 #define GST_OMX_H264_VIDEO_ENC_REF_FRAMES_MAX 16
+#else
+#define GST_OMX_H264_VIDEO_ENC_REF_FRAMES_DEFAULT (0xffffffff)
+#define GST_OMX_H264_VIDEO_ENC_REF_FRAMES_MIN 0
+#define GST_OMX_H264_VIDEO_ENC_REF_FRAMES_MAX G_MAXUINT
+#endif
 
 /* class initialization */
 
@@ -224,7 +230,7 @@ gst_omx_h264_enc_class_init (GstOMXH264EncClass * klass)
           GST_PARAM_MUTABLE_READY));
 
   g_object_class_install_property (gobject_class, PROP_REF_FRAMES,
-      g_param_spec_uchar ("ref-frames", "Reference frames",
+      g_param_spec_uint ("ref-frames", "Reference frames",
           "Number of reference frames used for inter-motion search (0=component default)",
           GST_OMX_H264_VIDEO_ENC_REF_FRAMES_MIN,
           GST_OMX_H264_VIDEO_ENC_REF_FRAMES_MAX,
@@ -283,7 +289,7 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
       self->loop_filter_mode = g_value_get_enum (value);
       break;
     case PROP_REF_FRAMES:
-      self->ref_frames = g_value_get_uchar (value);
+      self->ref_frames = g_value_get_uint (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -323,7 +329,7 @@ gst_omx_h264_enc_get_property (GObject * object, guint prop_id, GValue * value,
       g_value_set_enum (value, self->loop_filter_mode);
       break;
     case PROP_REF_FRAMES:
-      g_value_set_uchar (value, self->ref_frames);
+      g_value_set_uint (value, self->ref_frames);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
