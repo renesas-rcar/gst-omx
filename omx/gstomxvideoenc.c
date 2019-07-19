@@ -36,6 +36,9 @@
 #include <OMX_Broadcom.h>
 #include <OMX_Index.h>
 #endif
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+#include "OMXR_Extension_vecmn.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
@@ -203,6 +206,30 @@ gst_omx_video_enc_roi_quality_type (void)
 }
 #endif
 
+#define GST_TYPE_OMX_VIDEO_ENC_SCAN_TYPE (gst_omx_video_enc_get_scantype ())
+static GType
+gst_omx_video_enc_get_scantype (void)
+{
+  static GType qtype = 0;
+
+  if (qtype == 0) {
+    static const GEnumValue values[] = {
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+      {OMXR_MC_VIDEO_MemAllocFrame, "Progressive", "progressive"},
+      {OMXR_MC_VIDEO_MemAllocFieldTff, "Interlaced Top Field First",
+          "interlaced-Tff"},
+      {OMXR_MC_VIDEO_MemAllocFieldBff, "Interlaced Bottom Field First",
+          "interlaced-Bff"},
+#endif
+      {0xffffffff, "Component Default", "default"},
+      {0, NULL, NULL},
+    };
+
+    qtype = g_enum_register_static ("GstOMXVideoEncScanType", values);
+  }
+  return qtype;
+}
+
 /* prototypes */
 static void gst_omx_video_enc_finalize (GObject * object);
 static void gst_omx_video_enc_set_property (GObject * object, guint prop_id,
@@ -261,6 +288,7 @@ enum
   PROP_SLICE_SIZE,
   PROP_DEPENDENT_SLICE,
   PROP_DEFAULT_ROI_QUALITY,
+  PROP_SCAN_TYPE
 };
 
 /* FIXME: Better defaults */
@@ -285,6 +313,7 @@ enum
 #define GST_OMX_VIDEO_ENC_SLICE_SIZE_DEFAULT (0)
 #define GST_OMX_VIDEO_ENC_DEPENDENT_SLICE_DEFAULT (FALSE)
 #define GST_OMX_VIDEO_ENC_DEFAULT_ROI_QUALITY OMX_ALG_ROI_QUALITY_HIGH
+#define GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT (0xffffffff)
 
 /* class initialization */
 #define do_init \
@@ -342,6 +371,14 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
       g_param_spec_uint ("quant-b-frames", "B-Frame Quantization",
           "Quantization parameter for B-frames (0xffffffff=component default)",
           0, G_MAXUINT, GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+
+  g_object_class_install_property (gobject_class, PROP_SCAN_TYPE,
+      g_param_spec_enum ("scan-type", "Scan Type",
+          "Encode Scan Type method",
+          GST_TYPE_OMX_VIDEO_ENC_SCAN_TYPE,
+          GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
@@ -505,6 +542,7 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->quant_i_frames = GST_OMX_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT;
   self->quant_p_frames = GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
   self->quant_b_frames = GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
+  self->scan_type = GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   self->qp_mode = GST_OMX_VIDEO_ENC_QP_MODE_DEFAULT;
   self->min_qp = GST_OMX_VIDEO_ENC_MIN_QP_DEFAULT;
@@ -915,6 +953,39 @@ gst_omx_video_enc_open (GstVideoEncoder * encoder)
 
       }
     }
+
+    if (self->scan_type != 0xffffffff) {
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+      OMXR_MC_VIDEO_PARAM_PICTURE_MEMORY_ALLOCTYPE alloctype_param;
+
+      GST_OMX_INIT_STRUCT (&alloctype_param);
+      alloctype_param.nPortIndex = self->enc_out_port->index;
+      GST_DEBUG_OBJECT (self, "Setting memory alloc type parameter");
+
+      err = gst_omx_component_get_parameter (self->enc,
+          OMXR_MC_IndexParamVideoPictureMemoryAlloc, &alloctype_param);
+      if (err != OMX_ErrorNone) {
+        GST_ERROR_OBJECT (self,
+            "Failed to get memory alloc type: %s (0x%08x)",
+            gst_omx_error_to_string (err), err);
+        return FALSE;
+      }
+
+      alloctype_param.eMemoryAlloc = self->scan_type;
+
+      err = gst_omx_component_set_parameter (self->enc,
+          OMXR_MC_IndexParamVideoPictureMemoryAlloc, &alloctype_param);
+      if (err != OMX_ErrorNone) {
+        GST_ERROR_OBJECT (self,
+            "Failed to set memory alloc type: %s (0x%08x)",
+            gst_omx_error_to_string (err), err);
+        return FALSE;
+      }
+#else
+      GST_ERROR_OBJECT (self,
+          "scan-type is invalid now due to MC does not support");
+#endif
+    }
   }
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   if (!set_zynqultrascaleplus_props (self))
@@ -1033,6 +1104,9 @@ gst_omx_video_enc_set_property (GObject * object, guint prop_id,
     case PROP_QUANT_B_FRAMES:
       self->quant_b_frames = g_value_get_uint (value);
       break;
+    case PROP_SCAN_TYPE:
+      self->scan_type = g_value_get_enum (value);
+      break;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     case PROP_QP_MODE:
       self->qp_mode = g_value_get_enum (value);
@@ -1112,6 +1186,9 @@ gst_omx_video_enc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_QUANT_B_FRAMES:
       g_value_set_uint (value, self->quant_b_frames);
+      break;
+    case PROP_SCAN_TYPE:
+      g_value_set_enum (value, self->scan_type);
       break;
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     case PROP_QP_MODE:
