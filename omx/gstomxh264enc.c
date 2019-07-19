@@ -717,6 +717,36 @@ unsupported_level:
   return FALSE;
 }
 
+#ifdef USE_OMX_TARGET_RCAR
+static gboolean
+keep_level_caps (GstOMXVideoEnc * enc, const gchar ** level)
+{
+  GstOMXH264Enc *self = GST_OMX_H264_ENC (enc);
+  GstCaps *peercaps = gst_pad_peer_query_caps (GST_VIDEO_ENCODER_SRC_PAD (enc),
+      gst_pad_get_pad_template_caps (GST_VIDEO_ENCODER_SRC_PAD (enc)));
+  GstStructure *s = gst_caps_get_structure (peercaps, 0);
+  const gchar *level_string = gst_structure_get_string (s, "level");
+
+  if (level_string && (!g_str_equal (level_string, *level))) {
+    /* FIXME: Currently, level=1 is auto judgment mode */
+    if (g_str_equal (level_string, "1")) {
+      GST_WARNING_OBJECT (self,
+          "level: %s changed to appropriate level: %s. Video bitstream will have level %s",
+          level_string, *level, *level);
+      *level = level_string;
+    } else {
+      GST_ERROR_OBJECT (self,
+          "Incorrect level: expect level %s actual level %s",
+          level_string, *level);
+      gst_caps_unref (peercaps);
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+#endif
+
 static GstCaps *
 gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
     GstVideoCodecState * state)
@@ -726,6 +756,9 @@ gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
   OMX_ERRORTYPE err;
   OMX_VIDEO_PARAM_PROFILELEVELTYPE param;
   const gchar *profile, *level;
+#ifdef USE_OMX_TARGET_RCAR
+  GstCaps *peercaps = NULL;
+#endif
 
   GST_OMX_INIT_STRUCT (&param);
   param.nPortIndex = GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
@@ -816,8 +849,19 @@ gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
         gst_caps_unref (caps);
         return NULL;
     }
+#ifdef USE_OMX_TARGET_RCAR
+    peercaps = gst_pad_peer_query_caps (GST_VIDEO_ENCODER_SRC_PAD (enc),
+        gst_pad_get_pad_template_caps (GST_VIDEO_ENCODER_SRC_PAD (enc)));
+
+    if (peercaps && !keep_level_caps (enc, &level))
+      return NULL;
+#endif
     gst_caps_set_simple (caps,
         "profile", G_TYPE_STRING, profile, "level", G_TYPE_STRING, level, NULL);
+#ifdef USE_OMX_TARGET_RCAR
+    if (peercaps)
+      gst_caps_unref (peercaps);
+#endif
   }
 
   return caps;
