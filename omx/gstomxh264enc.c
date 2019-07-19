@@ -32,6 +32,9 @@
 #include <OMX_Broadcom.h>
 #include <OMX_Index.h>
 #endif
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+#include "OMXR_Extension_vecmn.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_h264_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_h264_enc_debug_category
@@ -682,6 +685,18 @@ gst_omx_h264_enc_set_format (GstOMXVideoEnc * enc, GstOMXPort * port,
       profile = gst_omx_h264_utils_get_profile_from_str (profile_string);
       if (profile == OMX_VIDEO_AVCProfileMax)
         goto unsupported_profile;
+#if defined (USE_OMX_TARGET_RCAR) && defined (HAVE_VIDEOENC_EXT)
+      if (profile == OMX_VIDEO_AVCProfileBaseline) {
+        guint32 scan_type = GST_OMX_VIDEO_ENC (self)->scan_type;
+
+        if (scan_type == OMXR_MC_VIDEO_MemAllocFieldTff ||
+            scan_type == OMXR_MC_VIDEO_MemAllocFieldBff) {
+          GST_ERROR_OBJECT (self,
+              "Baseline profile doesn't support interlace encoding");
+          return FALSE;
+        }
+      }
+#endif
     }
     level_string = gst_structure_get_string (s, "level");
     if (level_string) {
