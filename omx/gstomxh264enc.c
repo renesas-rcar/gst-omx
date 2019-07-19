@@ -745,6 +745,42 @@ keep_level_caps (GstOMXVideoEnc * enc, const gchar ** level)
 
   return TRUE;
 }
+
+static void
+inform_port_parameters (GstOMXH264Enc * self)
+{
+  OMX_VIDEO_CONFIG_AVCINTRAPERIOD config_avcintraperiod;
+  OMX_VIDEO_PARAM_AVCTYPE param_avc;
+  OMX_ERRORTYPE err;
+
+  GST_OMX_INIT_STRUCT (&config_avcintraperiod);
+  config_avcintraperiod.nPortIndex =
+      GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
+  err =
+      gst_omx_component_get_config (GST_OMX_VIDEO_ENC (self)->enc,
+      OMX_IndexConfigVideoAVCIntraPeriod, &config_avcintraperiod);
+  if (err != OMX_ErrorNone)
+    GST_ERROR_OBJECT (self,
+        "Can't get OMX_IndexConfigVideoAVCIntraPeriod %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+
+  GST_OMX_INIT_STRUCT (&param_avc);
+  param_avc.nPortIndex = GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
+  err =
+      gst_omx_component_get_parameter (GST_OMX_VIDEO_ENC (self)->enc,
+      OMX_IndexParamVideoAvc, &param_avc);
+  if (err != OMX_ErrorNone)
+    GST_ERROR_OBJECT (self,
+        "Can't get OMX_IndexParamVideoAvc %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+
+  GST_INFO_OBJECT (self,
+      "OMX judgement: Video will be encoded with nIDRPeriod = %u"
+      " nPFrames = %u BFrames = %u nRefFrames = %u",
+      (guint) config_avcintraperiod.nIDRPeriod,
+      (guint) param_avc.nPFrames, (guint) param_avc.nBFrames,
+      (guint) param_avc.nRefFrames);
+}
 #endif
 
 static GstCaps *
@@ -855,6 +891,8 @@ gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
 
     if (peercaps && !keep_level_caps (enc, &level))
       return NULL;
+
+    inform_port_parameters (self);
 #endif
     gst_caps_set_simple (caps,
         "profile", G_TYPE_STRING, profile, "level", G_TYPE_STRING, level, NULL);
