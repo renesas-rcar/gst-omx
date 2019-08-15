@@ -2887,9 +2887,17 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
     goto done;
   }
 
+  if (!gst_video_frame_map (&frame, info, inbuf, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (self, "Invalid input buffer size");
+    ret = FALSE;
+    goto done;
+  }
+
   /* Same strides and everything */
-  if (gst_buffer_get_size (inbuf) ==
-      outbuf->omx_buf->nAllocLen - outbuf->omx_buf->nOffset) {
+  if ((gst_buffer_get_size (inbuf) ==
+          outbuf->omx_buf->nAllocLen - outbuf->omx_buf->nOffset) &&
+      (GST_VIDEO_FRAME_COMP_STRIDE (&frame, 0) ==
+          port_def->format.video.nStride)) {
     outbuf->omx_buf->nFilledLen = gst_buffer_get_size (inbuf);
 
     GST_LOG_OBJECT (self, "Matched strides - direct copy %u bytes",
@@ -2899,7 +2907,7 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
         outbuf->omx_buf->pBuffer + outbuf->omx_buf->nOffset,
         outbuf->omx_buf->nFilledLen);
     ret = TRUE;
-    goto done;
+    goto unmap_frame;
   }
 
   /* Different strides */
@@ -2912,12 +2920,6 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
       gint src_stride, dest_stride;
 
       outbuf->omx_buf->nFilledLen = 0;
-
-      if (!gst_video_frame_map (&frame, info, inbuf, GST_MAP_READ)) {
-        GST_ERROR_OBJECT (self, "Invalid input buffer size");
-        ret = FALSE;
-        goto done;
-      }
 
       for (i = 0; i < 3; i++) {
         if (i == 0) {
@@ -2947,10 +2949,9 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
 
         if (dest + dest_stride * height >
             outbuf->omx_buf->pBuffer + outbuf->omx_buf->nAllocLen) {
-          gst_video_frame_unmap (&frame);
           GST_ERROR_OBJECT (self, "Invalid output buffer size");
           ret = FALSE;
-          goto done;
+          goto unmap_frame;
         }
 
         for (j = 0; j < height; j++) {
@@ -2969,7 +2970,6 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
               (port_def->format.video.nSliceHeight / 2) *
               (port_def->format.video.nStride / 2);
       }
-      gst_video_frame_unmap (&frame);
       ret = TRUE;
       break;
     }
@@ -2983,9 +2983,13 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
       break;
     default:
       GST_ERROR_OBJECT (self, "Unsupported format");
-      goto done;
+      goto unmap_frame;
       break;
   }
+
+unmap_frame:
+
+  gst_video_frame_unmap (&frame);
 
 done:
 
