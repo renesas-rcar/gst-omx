@@ -1731,23 +1731,27 @@ static void
 update_buffer_meta (GstOMXVideoDec * self, GstBuffer * buffer,
     const crop_info * cinfo, GstVideoMeta * vmeta)
 {
-  gsize offset[GST_VIDEO_MAX_PLANES] = { 0, };
   GstVideoCodecState *state =
       gst_video_decoder_get_output_state (GST_VIDEO_DECODER (self));
   GstVideoInfo *vinfo = &state->info;
   gint i;
 
+  if ((GST_VIDEO_INFO_WIDTH (vinfo) == vmeta->width) &&
+      (GST_VIDEO_INFO_HEIGHT (vinfo) == vmeta->height))
+    return;
+
+  GST_DEBUG_OBJECT (self, "update buffer meta");
+
   for (i = 0; i < GST_VIDEO_INFO_N_PLANES (vinfo); i++) {
     const GstVideoFormatInfo *finfo = vinfo->finfo;
-    offset[i] = vmeta->offset[i] + (vmeta->stride[i] *
+    vmeta->offset[i] += (vmeta->stride[i] *
         GST_VIDEO_FORMAT_INFO_SCALE_HEIGHT (finfo, i, cinfo->crop_top))
         + (GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (finfo, i, cinfo->crop_left) *
         GST_VIDEO_FORMAT_INFO_PSTRIDE (finfo, i));
   }
 
-  gst_buffer_add_video_meta_full (buffer, GST_VIDEO_FRAME_FLAG_NONE,
-      vmeta->format, vmeta->width - cinfo->crop_left,
-      vmeta->height - cinfo->crop_top, vmeta->n_planes, offset, vmeta->stride);
+  vmeta->width -= cinfo->crop_left;
+  vmeta->height -= cinfo->crop_top;
 }
 
 static gboolean
