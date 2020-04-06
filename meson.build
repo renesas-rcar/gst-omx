@@ -212,6 +212,65 @@ elif omx_target == 'tizonia'
   cdata.set('TIZONIA_LIBDIR', tizil_dep.get_pkgconfig_variable('libdir'))
   tizil_includedir = tizil_dep.get_pkgconfig_variable('includedir')
   gst_omx_args += ['-I' + tizil_includedir + '/tizonia']
+elif omx_target == 'rcar'
+  cdata.set('USE_OMX_TARGET_RCAR', 1)
+
+  # check mmngrbuf library and function to use dmabuf exporter
+  lib_mmngrbuf = cc.find_library('mmngrbuf', required : false)
+  have_mmngrbuf = cc.has_function('mmngr_export_start_in_user', dependencies : lib_mmngrbuf)
+  if have_mmngrbuf
+    cdata.set('HAVE_MMNGRBUF', 1)
+  endif
+
+  # check OMXR_Extension_vdcmn.h
+  have_exvdcmn = cc.has_header(
+      'OMXR_Extension_vdcmn.h',
+      args : gst_omx_args)
+  if have_mmngrbuf and have_exvdcmn
+    cdata.set ('USE_RCAR_DMABUF', 1)
+  endif
+
+  # check OMXR_Extension_vp8e.h
+  if cc.has_header (
+    'OMXR_Extension_vp8e.h',
+    args : gst_omx_args)
+    cdata.set ('HAVE_VP8ENC_EXT', 1)
+  endif
+
+  # check OMXR_Extension_aapd.h
+  if cc.has_header (
+      'OMXR_Extension_aapd.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_AACDEC_EXT', 1)
+  endif
+
+  # check OMXR_Extension_audio.h
+  if cc.has_header (
+      'OMXR_Extension_audio.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_AUDIOR_EXT', 1)
+  endif
+
+  # check OMXR_Extension_vecmn.h
+  if cc.has_header (
+      'OMXR_Extension_vecmn.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_VIDEOENC_EXT', 1)
+  endif
+
+  # check OMXR_Extension_video.h
+  if cc.has_header (
+      'OMXR_Extension_video.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_VIDEOR_EXT', 1)
+  endif
+
+  # check OMXR_Extension_h265d.h
+  if cc.has_header (
+      'OMXR_Extension_h265d.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_H265DEC_EXT', 1)
+  endif
 else
   error ('Unsupported omx target specified. Use the -Dtarget option')
 endif

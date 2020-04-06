@@ -24,12 +24,14 @@ omx_sources = [
   'gstomxanalogaudiosink.c',
   'gstomxhdmiaudiosink.c',
   'gstomxmp3enc.c',
+  'gstomxwmadec.c',
 ]
 
 extra_c_args = []
 
 if have_omx_vp8
   omx_sources += 'gstomxvp8dec.c'
+  omx_sources += 'gstomxvp8enc.c'
 endif
 
 if have_omx_theora
@@ -46,6 +48,13 @@ optional_deps = []
 if gstgl_dep.found()
   optional_deps += gstgl_dep
   extra_c_args += ['-DGST_USE_UNSTABLE_API']
+endif
+
+if omx_target == 'rcar'
+  omx_sources += 'gstomxh265dec.c'
+  if have_mmngrbuf
+    optional_deps += lib_mmngrbuf
+  endif
 endif
 
 gstomx = library('gstomx',
