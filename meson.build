@@ -249,6 +249,7 @@ if cc.has_header (
     args : gst_omx_args,
     include_directories : [omx_inc])
   extra_video_headers += '''
+#include <OMX_Video.h>
 #include <OMX_VideoExt.h>'''
   cdata.set ('HAVE_VIDEO_EXT', 1)
 endif
