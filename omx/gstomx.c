@@ -3530,7 +3530,7 @@ static const GGetTypeFunction types[] = {
   gst_omx_aac_dec_get_type, gst_omx_mp3_enc_get_type,
   gst_omx_amr_dec_get_type
 #ifdef HAVE_VP8
-      , gst_omx_vp8_dec_get_type
+      , gst_omx_vp8_dec_get_type, gst_omx_vp8_enc_get_type
 #endif
 #ifdef HAVE_THEORA
       , gst_omx_theora_dec_get_type
@@ -3540,7 +3540,7 @@ static const GGetTypeFunction types[] = {
 #elif USE_OMX_TARGET_RCAR
       , gst_omx_h265_dec_get_type
 #endif
-  , gst_omx_wma_dec_get_type, gst_omx_vp8_enc_get_type
+  , gst_omx_wma_dec_get_type
 };
 
 struct TypeOffest
