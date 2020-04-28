@@ -804,18 +804,16 @@ gst_omx_buffer_pool_finalize (GObject * object)
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (object);
 
 #ifdef USE_RCAR_DMABUF
-  if (GST_OMX_VIDEO_DEC (pool->element)->dmabuf) {
-    gint i;
-    gint dmabuf_id;
+  gint i;
+  gint dmabuf_id;
 
-    for (i = 0; i < pool->id_array->len; i++) {
-      dmabuf_id = g_array_index (pool->id_array, gint, i);
-      if (dmabuf_id >= 0) {
-        GST_DEBUG_OBJECT (pool, "mmngr_export_end_in_user (%d)", dmabuf_id);
-        mmngr_export_end_in_user_ext (dmabuf_id);
-      } else {
-        GST_WARNING_OBJECT (pool, "Invalid dmabuf_id");
-      }
+  for (i = 0; i < pool->id_array->len; i++) {
+    dmabuf_id = g_array_index (pool->id_array, gint, i);
+    if (dmabuf_id >= 0) {
+      GST_DEBUG_OBJECT (pool, "mmngr_export_end_in_user (%d)", dmabuf_id);
+      mmngr_export_end_in_user_ext (dmabuf_id);
+    } else {
+      GST_WARNING_OBJECT (pool, "Invalid dmabuf_id");
     }
   }
   g_array_free (pool->id_array, TRUE);
