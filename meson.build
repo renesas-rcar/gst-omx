@@ -222,12 +222,14 @@ elif omx_target == 'rcar'
     cdata.set('HAVE_MMNGRBUF', 1)
   endif
 
-  # check OMXR_Extension_vdcmn.h
-  have_exvdcmn = cc.has_header(
-      'OMXR_Extension_vdcmn.h',
-      args : gst_omx_args)
-  if have_mmngrbuf and have_exvdcmn
-    cdata.set ('USE_RCAR_DMABUF', 1)
+  if get_option('dmabuf_support')
+    # check OMXR_Extension_vdcmn.h
+    have_exvdcmn = cc.has_header(
+        'OMXR_Extension_vdcmn.h',
+        args : gst_omx_args)
+    if have_mmngrbuf and have_exvdcmn
+      cdata.set ('USE_RCAR_DMABUF', 1)
+    endif
   endif
 
   # check OMXR_Extension_vp8e.h
