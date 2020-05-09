@@ -551,7 +551,7 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
       n_planes = GST_VIDEO_INFO_N_PLANES (&pool->video_info);
 #endif
       for (i = 0; i < n_planes; i++) {
-#ifndef USE_OMX_TARGET_RCAR
+#ifndef USE_RCAR_DMABUF
         gint fd;
 
         fd = GPOINTER_TO_INT (omx_buf->omx_buf->pBuffer);
@@ -869,7 +869,7 @@ static void
 gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 {
   pool->buffers = g_ptr_array_new ();
-#if USE_RCAR_DMABUF
+#ifdef USE_RCAR_DMABUF
   pool->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
 #endif
 }

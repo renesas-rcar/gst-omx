@@ -11,3 +11,6 @@ option('struct_packing', type : 'combo',
 option('examples', type : 'feature', value : 'auto', yield : true)
 option('tests', type : 'feature', value : 'auto', yield : true)
 option('tools', type : 'feature', value : 'auto', yield : true)
+
+#R-Car custom options
+option('dmabuf_support', type: 'boolean', value: true)
