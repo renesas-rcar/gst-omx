@@ -2433,11 +2433,13 @@ gst_omx_video_enc_enable (GstOMXVideoEnc * self, GstBuffer * input)
 
       self->input_dmabuf = TRUE;
 #elif defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
-      if (update_input_port_buffer_count (self, input) &&
-          update_input_port_color_format (self))
-        self->import_dmabuf = TRUE;
-      else
-        return FALSE;
+      if (self->import_dmabuf) {
+        if (update_input_port_buffer_count (self, input) &&
+            update_input_port_color_format (self))
+          self->input_dmabuf = TRUE;
+        else
+          return FALSE;
+      }
 #endif
     } else if (self->import_dmabuf) {
       GST_ERROR_OBJECT (self, ("Input buffer is not dmabuf"));
