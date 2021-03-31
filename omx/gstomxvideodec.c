@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2019, Renesas Electronics Corporation
+ * Copyright (C) 2019-2021, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -52,6 +52,7 @@
 #include "gstomxbufferpool.h"
 #include "gstomxvideo.h"
 #include "gstomxvideodec.h"
+#include "gstomxvp9dec.h"
 #ifdef HAVE_VIDEODEC_EXT
 #include "OMXR_Extension_vdcmn.h"
 #endif
@@ -3150,6 +3151,29 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
 #endif
 
   GST_DEBUG_OBJECT (self, "Updating ports definition");
+#ifdef USE_OMX_TARGET_RCAR
+  if (!needs_disable) {
+    OMX_PARAM_PORTDEFINITIONTYPE out_port_def;
+
+    /* Initialize default output allocation align for page size
+     * Choose 192x192 for VP9 Decoder and 128x128 for other Decoders
+     * because they are close to minimum setting 192 (VP9) and 80 (others)*/
+    gst_omx_port_get_port_definition (self->dec_out_port, &out_port_def);
+    if (GST_IS_OMX_VP9_DEC (self)) {
+      out_port_def.format.video.nStride = 192;
+      out_port_def.format.video.nSliceHeight = 192;
+    } else {
+      out_port_def.format.video.nStride = 128;
+      out_port_def.format.video.nSliceHeight = 128;
+    }
+
+    if (gst_omx_port_update_port_definition (self->dec_out_port,
+            &out_port_def) != OMX_ErrorNone)
+      return FALSE;
+  }
+  /* To make source code flexible, accept getting port_def param again */
+#endif
+
   if (gst_omx_port_update_port_definition (self->dec_out_port,
           NULL) != OMX_ErrorNone)
     return FALSE;
