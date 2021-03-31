@@ -1083,14 +1083,6 @@ gst_omx_video_enc_close (GstVideoEncoder * encoder)
 
   self->started = FALSE;
 
-#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
-  for (gint i = 0; i < self->id_array->len; i++)
-    mmngr_import_end_in_user_ext (g_array_index (self->id_array, gint, i));
-  g_array_set_size (self->fd_table_array, 0);
-  g_array_set_size (self->id_array, 0);
-  g_array_set_size (self->extaddr_array, 0);
-#endif
-
   return TRUE;
 }
 
@@ -1877,6 +1869,14 @@ gst_omx_video_enc_stop (GstVideoEncoder * encoder)
   self->default_target_bitrate = GST_OMX_PROP_OMX_DEFAULT;
 
   gst_omx_component_get_state (self->enc, 5 * GST_SECOND);
+
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+  for (gint i = 0; i < self->id_array->len; i++)
+    mmngr_import_end_in_user_ext (g_array_index (self->id_array, gint, i));
+  g_array_set_size (self->fd_table_array, 0);
+  g_array_set_size (self->id_array, 0);
+  g_array_set_size (self->extaddr_array, 0);
+#endif
 
   return TRUE;
 }
