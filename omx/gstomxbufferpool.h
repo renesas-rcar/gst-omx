@@ -1,7 +1,7 @@
 /*
  * Copyright 2014 Advanced Micro Devices, Inc.
  *   Author: Christian König <christian.koenig@amd.com>
- * Copyright (C) 2019, Renesas Electronics Corporation
+ * Copyright (C) 2019-2020, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
