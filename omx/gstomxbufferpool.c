@@ -4,6 +4,7 @@
  * Copyright (C) 2013-2019, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
  *           George Kiagiadakis <george.kiagiadakis@collabora.com>
+ * Copyright (C) 2019-2020, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
