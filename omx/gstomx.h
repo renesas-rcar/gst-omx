@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2017, Renesas Electronics Corporation
+ * Copyright (C) 2017,2020-2021 Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -212,27 +212,27 @@ G_BEGIN_DECLS
 /* omx videodecoder support 3 modes (copy, no-copy(use buffer of Bufferpool), dmabuf) to choose.
  * Default is dmabuf mode. This hack will choose copy mode is default mode
  */
-#define GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT                         G_GUINT64_CONSTANT (0x0000000000000800)
+#define GST_OMX_HACK_USE_COPY_MODE_AS_DEFAULT                         G_GUINT64_CONSTANT (0x0000000000004000)
 
 /* omx videodecoder support 3 modes (copy, no-copy(use buffer of Bufferpool), dmabuf) to choose.
  * Default is dmabuf mode. This hack will choose no-copy mode is default mode
  */
-#define GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT                      G_GUINT64_CONSTANT (0x0000000000001000)
+#define GST_OMX_HACK_USE_NO_COPY_MODE_AS_DEFAULT                      G_GUINT64_CONSTANT (0x0000000000008000)
 
 /* Support default pixel aspect ratio is 1:1.
  */
-#define GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO                       G_GUINT64_CONSTANT (0x0000000000002000)
+#define GST_OMX_HACK_DEFAULT_PIXEL_ASPECT_RATIO                       G_GUINT64_CONSTANT (0x0000000000010000)
 /* Align Stride for 32 in case support for NV12 format (Semi-planar)
  * Align Stride for 64 in case support for I420 format (Planar).
  * This alignment support for Renesas Video Encoder MC that have restriction
  * of nStride in OMX.
  */
-#define GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN                       G_GUINT64_CONSTANT (0x0000000000008000)
+#define GST_OMX_HACK_RENESAS_ENCMC_STRIDE_ALIGN                       G_GUINT64_CONSTANT (0x0000000000020000)
 
 /* If the component does not handle for codec data. Skip this handling
  * Happens with Renesas OMX WMADEC
  */
-#define GST_OMX_HACK_SKIP_HANDLE_CODEC_DATA                           G_GUINT64_CONSTANT (0x0000000000004000)
+#define GST_OMX_HACK_SKIP_HANDLE_CODEC_DATA                           G_GUINT64_CONSTANT (0x0000000000040000)
 
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;
