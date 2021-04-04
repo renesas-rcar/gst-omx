@@ -89,6 +89,8 @@ struct _GstOMXBufferPool
 #ifdef USE_RCAR_DMABUF
   /* Array use to contain dma_id. It is used in export_end dmabuf area */
   GArray *id_array;
+  /* Array use to contain physical address. It is used in dynamic change, seeking case */
+  GArray *physadd_array;
 #endif
 };
 

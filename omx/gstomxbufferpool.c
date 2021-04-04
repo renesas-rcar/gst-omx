@@ -473,10 +473,22 @@ gst_omx_buffer_pool_create_dmabuf_memory (gint num_plane,
     slice = slice / 2;
   }
 
-  decode_res =
-      (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->omx_buf->pOutputPortPrivate;
+  if (omx_buf->omx_buf->pOutputPortPrivate) {
+    decode_res =
+        (OMXR_MC_VIDEO_DECODERESULTTYPE *) omx_buf->omx_buf->pOutputPortPrivate;
 
-  phys_addr = (guintptr) decode_res->pvPhysImageAddressY + offset;
+    phys_addr = (guintptr) decode_res->pvPhysImageAddressY + offset;
+  }
+  /* Store physical address use for seeking in dynamic change */
+  if (!GST_OMX_VIDEO_DEC (self->element)->dynamic_change) {
+    g_array_append_val (self->physadd_array, phys_addr);
+  } else {
+    if (!omx_buf->omx_buf->pOutputPortPrivate) {
+      phys_addr =
+          (guintptr) g_array_index (self->physadd_array, guint,
+          ((2 * self->current_buffer_index) + num_plane));
+    }
+  }
   /* Calculate offset between physical address and page boundary */
   page_offset = phys_addr & (page_size - 1);
 
@@ -824,6 +836,10 @@ gst_omx_buffer_pool_finalize (GObject * object)
 {
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (object);
 
+#ifdef HAVE_MMNGRBUF
+  g_array_free (pool->physadd_array, TRUE);
+#endif
+
   if (pool->element)
     gst_object_unref (pool->element);
   pool->element = NULL;
@@ -874,6 +890,9 @@ static void
 gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 {
   pool->buffers = g_ptr_array_new ();
+#ifdef HAVE_MMNGRBUF
+  pool->physadd_array = g_array_new (FALSE, FALSE, sizeof (guint));
+#endif
 }
 
 GstBufferPool *
