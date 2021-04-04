@@ -277,6 +277,12 @@ gst_omx_buffer_pool_start (GstBufferPool * bpool)
 
   g_assert (pool->port->buffers);
 
+#ifdef USE_RCAR_DMABUF
+  pool->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
+#endif
+  /* Reset current_buffer_index */
+  pool->current_buffer_index = 0;
+
   return
       GST_BUFFER_POOL_CLASS (gst_omx_buffer_pool_parent_class)->start (bpool);
 }
@@ -312,6 +318,21 @@ gst_omx_buffer_pool_stop (GstBufferPool * bpool)
   pool->add_videometa = FALSE;
   pool->deactivated = TRUE;
   pool->port->using_pool = TRUE;
+
+#ifdef USE_RCAR_DMABUF
+  gint dmabuf_id;
+
+  for (i = 0; i < pool->id_array->len; i++) {
+    dmabuf_id = g_array_index (pool->id_array, gint, i);
+    if (dmabuf_id >= 0) {
+      GST_DEBUG_OBJECT (pool, "mmngr_export_end_in_user (%d)", dmabuf_id);
+      mmngr_export_end_in_user_ext (dmabuf_id);
+    } else {
+      GST_WARNING_OBJECT (pool, "Invalid dmabuf_id");
+    }
+  }
+  g_array_free (pool->id_array, TRUE);
+#endif
 
   return GST_BUFFER_POOL_CLASS (gst_omx_buffer_pool_parent_class)->stop (bpool);
 }
@@ -803,22 +824,6 @@ gst_omx_buffer_pool_finalize (GObject * object)
 {
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (object);
 
-#ifdef USE_RCAR_DMABUF
-  gint i;
-  gint dmabuf_id;
-
-  for (i = 0; i < pool->id_array->len; i++) {
-    dmabuf_id = g_array_index (pool->id_array, gint, i);
-    if (dmabuf_id >= 0) {
-      GST_DEBUG_OBJECT (pool, "mmngr_export_end_in_user (%d)", dmabuf_id);
-      mmngr_export_end_in_user_ext (dmabuf_id);
-    } else {
-      GST_WARNING_OBJECT (pool, "Invalid dmabuf_id");
-    }
-  }
-  g_array_free (pool->id_array, TRUE);
-#endif
-
   if (pool->element)
     gst_object_unref (pool->element);
   pool->element = NULL;
@@ -869,9 +874,6 @@ static void
 gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 {
   pool->buffers = g_ptr_array_new ();
-#ifdef USE_RCAR_DMABUF
-  pool->id_array = g_array_new (FALSE, FALSE, sizeof (gint));
-#endif
 }
 
 GstBufferPool *
