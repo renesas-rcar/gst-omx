@@ -334,6 +334,18 @@ if cc.has_header (
   cdata.set ('HAVE_OTHER_EXT', 1)
 endif
 
+if cc.has_header (
+    'OMXR_Extension_vp9d.h',
+    args : gst_omx_args)
+  cdata.set ('HAVE_VP9DEC_EXT', 1)
+endif
+
+if cc.has_header (
+    'OMXR_Extension_vdcmn.h',
+    args : gst_omx_args)
+  cdata.set ('HAVE_VIDEODEC_EXT', 1)
+endif
+
 have_omx_vp8 = cc.has_header_symbol(
     'OMX_Video.h',
     'OMX_VIDEO_CodingVP8',

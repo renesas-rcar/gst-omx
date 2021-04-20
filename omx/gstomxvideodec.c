@@ -649,16 +649,16 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
       goto done;
   }
 
-  if (self->dynamic_change)
-  {
+  if (!self->dynamic_change) {
     if (vinfo->width + cinfo.crop_left != port_def->format.video.nFrameWidth ||
         vinfo->height + cinfo.crop_top != port_def->format.video.nFrameHeight) {
-        GST_ERROR_OBJECT (self, "Resolution do not match: port=%ux%u vinfo =%dx%d,"
-            "crop left=%d, crop top=%d",
-            (guint) port_def->format.video.nFrameWidth,
-            (guint) port_def->format.video.nFrameHeight,
-            vinfo->width, vinfo->height, cinfo.crop_left, cinfo.crop_top);
-        goto done;
+      GST_ERROR_OBJECT (self,
+          "Resolution do not match: port=%ux%u vinfo =%dx%d,"
+          "crop left=%d, crop top=%d",
+          (guint) port_def->format.video.nFrameWidth,
+          (guint) port_def->format.video.nFrameHeight, vinfo->width,
+          vinfo->height, cinfo.crop_left, cinfo.crop_top);
+      goto done;
     }
   }
 
@@ -1752,17 +1752,24 @@ update_buffer_meta (GstOMXVideoDec * self, GstBuffer * buffer,
     return;
 
   GST_DEBUG_OBJECT (self, "update buffer meta");
+  if (self->enable_crop) {
+    for (i = 0; i < GST_VIDEO_INFO_N_PLANES (vinfo); i++) {
+      const GstVideoFormatInfo *finfo = vinfo->finfo;
+      vmeta->offset[i] += (vmeta->stride[i] *
+          GST_VIDEO_FORMAT_INFO_SCALE_HEIGHT (finfo, i, cinfo->crop_top))
+          + (GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (finfo, i, cinfo->crop_left) *
+          GST_VIDEO_FORMAT_INFO_PSTRIDE (finfo, i));
+    }
 
-  for (i = 0; i < GST_VIDEO_INFO_N_PLANES (vinfo); i++) {
-    const GstVideoFormatInfo *finfo = vinfo->finfo;
-    vmeta->offset[i] += (vmeta->stride[i] *
-        GST_VIDEO_FORMAT_INFO_SCALE_HEIGHT (finfo, i, cinfo->crop_top))
-        + (GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (finfo, i, cinfo->crop_left) *
-        GST_VIDEO_FORMAT_INFO_PSTRIDE (finfo, i));
+    vmeta->width -= cinfo->crop_left;
+    vmeta->height -= cinfo->crop_top;
+  } else {
+    if (self->dynamic_change) {
+      vmeta->width = GST_VIDEO_INFO_WIDTH (vinfo);
+      vmeta->height = GST_VIDEO_INFO_HEIGHT (vinfo);
+    }
   }
-
-  vmeta->width -= cinfo->crop_left;
-  vmeta->height -= cinfo->crop_top;
+  gst_video_codec_state_unref (state);
 }
 
 static gboolean
@@ -1934,8 +1941,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
   }
 
   g_assert (acq_return == GST_OMX_ACQUIRE_BUFFER_OK);
-
-   /* Update caps based on dynamic changing */
+  /* Update caps based on dynamic changing */
   if (!gst_omx_video_dec_handle_dynamic_change (self, buf)) {
     gst_omx_port_release_buffer (port, buf);
     goto caps_failed;
@@ -2025,6 +2031,13 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         if (vmeta)
           update_buffer_meta (self, outbuf, &cinfo, vmeta);
       }
+      if (self->dynamic_change) {
+        GstVideoMeta *vmeta;
+
+        vmeta = gst_buffer_get_video_meta (outbuf);
+        if (vmeta)
+          update_buffer_meta (self, outbuf, &cinfo, vmeta);
+      }
 
       buf = NULL;
     } else {
@@ -2071,6 +2084,13 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
             outbuf);
 
       if (self->enable_crop && (cinfo.crop_top || cinfo.crop_left)) {
+        GstVideoMeta *vmeta;
+
+        vmeta = gst_buffer_get_video_meta (outbuf);
+        if (vmeta)
+          update_buffer_meta (self, outbuf, &cinfo, vmeta);
+      }
+      if (self->dynamic_change) {
         GstVideoMeta *vmeta;
 
         vmeta = gst_buffer_get_video_meta (outbuf);
@@ -3731,15 +3751,6 @@ gst_omx_video_dec_handle_dynamic_change_default (GstOMXVideoDec * self,
         query = gst_query_new_drain ();
         gst_pad_peer_query (GST_VIDEO_DECODER_SRC_PAD (self), query);
         gst_query_unref (query);
-        if (!gst_buffer_pool_set_active (self->out_port_pool, FALSE)) {
-          GST_ERROR_OBJECT (self,
-              "Fail to deactivate omxbufferpool in dynamic change");
-          gst_video_codec_state_unref (state);
-
-          GST_VIDEO_DECODER_STREAM_UNLOCK (self);
-          return FALSE;
-        }
-        GST_OMX_BUFFER_POOL (self->out_port_pool)->deactivated = TRUE;
       }
     }
 
@@ -3763,6 +3774,11 @@ gst_omx_video_dec_handle_dynamic_change_default (GstOMXVideoDec * self,
 
       GST_VIDEO_DECODER_STREAM_UNLOCK (self);
       return FALSE;
+    }
+    if (self->out_port_pool) {
+      GstBufferPool *pool =
+          gst_video_decoder_get_buffer_pool (GST_VIDEO_DECODER (self));
+      gst_buffer_pool_set_active (pool, FALSE);
     }
     GST_DEBUG_OBJECT (self, "New caps: %" GST_PTR_FORMAT,
         gst_pad_get_current_caps (GST_VIDEO_DECODER_SRC_PAD (self)));
