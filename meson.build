@@ -216,6 +216,8 @@ elif omx_target == 'tizonia'
   tizil_includedir = tizil_dep.get_pkgconfig_variable('includedir')
   gst_omx_args += ['-I' + tizil_includedir + '/tizonia']
   omx_inc = []
+elif omx_target == 'rcar'
+  cdata.set('USE_OMX_TARGET_RCAR', 1)
 else
   error ('Unsupported omx target specified. Use the -Dtarget option')
 endif
