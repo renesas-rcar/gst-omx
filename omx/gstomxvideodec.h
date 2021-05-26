@@ -100,6 +100,9 @@ struct _GstOMXVideoDec
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   guint32 internal_entropy_buffers;
 #endif
+
+  /* Set TRUE to use dmabuf to transfer decoded data */
+  gboolean use_dmabuf;
 };
 
 struct _GstOMXVideoDecClass
