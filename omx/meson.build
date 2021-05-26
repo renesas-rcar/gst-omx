@@ -49,6 +49,15 @@ if gstgl_dep.found()
   extra_c_args += ['-DGST_USE_UNSTABLE_API']
 endif
 
+if omx_target == 'rcar'
+  if have_mmngrbuf
+    optional_deps += lib_mmngrbuf
+    if have_exvdcmn
+      omx_sources += 'gstomxrcarmemory.c'
+    endif
+  endif
+endif
+
 gstomx = library('gstomx',
   omx_sources,
   c_args : gst_omx_args + extra_c_args,

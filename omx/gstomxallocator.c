@@ -24,6 +24,9 @@
 
 #include "gstomxallocator.h"
 #include <gst/allocators/gstdmabuf.h>
+#ifdef USE_RCAR_DMABUF
+#include "gstomxrcarmemory.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_allocator_debug_category);
 #define GST_CAT_DEFAULT gst_omx_allocator_debug_category
@@ -466,6 +469,20 @@ install_mem_dispose (GstOMXMemory * mem)
       (GstMiniObjectDisposeFunction) gst_omx_allocator_memory_dispose;
 }
 
+static GstMemory *
+gst_omx_allocator_alloc_dmabuf(GstOMXAllocator * allocator,
+            GstOMXBuffer *omx_buf) {
+#ifdef USE_RCAR_DMABUF
+  return gst_omx_rcar_memory_alloc(allocator->foreign_allocator, omx_buf);
+#else
+  gint fd;
+  fd = GPOINTER_TO_INT (omx_buf->omx_buf->pBuffer);
+  return gst_dmabuf_allocator_alloc (allocator->foreign_allocator, fd,
+    omx_buf->omx_buf->nAllocLen);
+#endif
+
+}
+
 /* the returned memory is transfer:none, ref still belongs to the allocator */
 GstMemory *
 gst_omx_allocator_allocate (GstOMXAllocator * allocator, gint index,
@@ -494,10 +511,12 @@ gst_omx_allocator_allocate (GstOMXAllocator * allocator, gint index,
       break;
     case GST_OMX_ALLOCATOR_FOREIGN_MEM_DMABUF:
     {
-      gint fd = GPOINTER_TO_INT (omx_buf->omx_buf->pBuffer);
-      mem->foreign_mem =
-          gst_dmabuf_allocator_alloc (allocator->foreign_allocator, fd,
-          omx_buf->omx_buf->nAllocLen);
+      mem->foreign_mem = gst_omx_allocator_alloc_dmabuf(allocator,
+            omx_buf);
+      if (!mem->foreign_mem) {
+        GST_ERROR_OBJECT(allocator, "dmabuf allocation failed");
+        return NULL;
+      }
       gst_mini_object_set_qdata (GST_MINI_OBJECT (mem->foreign_mem),
           GST_OMX_MEMORY_QUARK, mem, NULL);
       install_mem_dispose (mem);

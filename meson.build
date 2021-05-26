@@ -218,6 +218,23 @@ elif omx_target == 'tizonia'
   omx_inc = []
 elif omx_target == 'rcar'
   cdata.set('USE_OMX_TARGET_RCAR', 1)
+
+  # check mmngrbuf library and function to use dmabuf exporter
+  lib_mmngrbuf = cc.find_library('mmngrbuf', required : false)
+  have_mmngrbuf = cc.has_function('mmngr_export_start_in_user', dependencies : lib_mmngrbuf)
+  if have_mmngrbuf
+    cdata.set('HAVE_MMNGRBUF', 1)
+  endif
+
+  if get_option('dmabuf_support')
+    # check OMXR_Extension_vdcmn.h
+    have_exvdcmn = cc.has_header(
+        'OMXR_Extension_vdcmn.h',
+        args : gst_omx_args)
+    if have_mmngrbuf and have_exvdcmn
+      cdata.set ('USE_RCAR_DMABUF', 1)
+    endif
+  endif
 else
   error ('Unsupported omx target specified. Use the -Dtarget option')
 endif
