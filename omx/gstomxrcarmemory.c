@@ -91,3 +91,94 @@ gst_omx_rcar_memory_alloc (GstAllocator * dmabuf_allocator,
 
   return mem;
 }
+
+static void
+gst_omx_rcar_mem_import_destroy (GstOMXRcarMemory * rcar_mem)
+{
+  mmngr_import_end_in_user_ext (rcar_mem->dmabuf_id);
+  g_slice_free (GstOMXRcarMemory, rcar_mem);
+}
+
+static gboolean
+gst_omx_rcar_import_dmabuf (GstOMXBuffer * buf, GstBuffer * input_buffer)
+{
+  guint n_mem;
+  gint i;
+  gint ret;
+  OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *ext_addr;
+
+  ext_addr = (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE *) buf->omx_buf->pBuffer;
+
+  GstVideoMeta *vmeta = gst_buffer_get_video_meta (input_buffer);
+  if (vmeta)
+    n_mem = vmeta->n_planes;
+  else
+    n_mem = gst_buffer_n_memory (input_buffer);
+
+
+  for (i = 0; i < n_mem; i++) {
+    GstOMXRcarMemory *rcar_mem;
+    GstMemory *mem;
+    gint fd;
+    gint dmabuf_id;
+    guint phys_addr;
+    gsize skip;
+    gsize size;
+    guint mem_idx, length;
+
+    if (vmeta) {
+      guint offset = vmeta->offset[i];
+      if (!gst_buffer_find_memory (input_buffer, offset, 1, &mem_idx, &length,
+              &skip)) {
+        return FALSE;
+      }
+    } else {
+      mem_idx = i;
+      skip = 0;
+    }
+
+    mem = gst_buffer_peek_memory (input_buffer, mem_idx);
+    fd = gst_dmabuf_memory_get_fd (mem);
+
+    ret =
+        mmngr_import_start_in_user_ext (&dmabuf_id, &size, &phys_addr, fd,
+        NULL);
+    if (ret != R_MM_OK) {
+      GST_ERROR ("Failed to mmngr_import_dmabuf");
+      return FALSE;
+    }
+
+    rcar_mem = g_slice_new0 (GstOMXRcarMemory);
+    rcar_mem->dmabuf_id = dmabuf_id;
+    rcar_mem->omx_buf = buf;
+    ext_addr->u32HwipAddr[i] = phys_addr + mem->offset + skip;
+
+    gst_mini_object_set_qdata (GST_MINI_OBJECT (mem),
+        GST_OMX_RCAR_MEMORY_QUARK, rcar_mem,
+        (GDestroyNotify) gst_omx_rcar_mem_import_destroy);
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_omx_rcar_compare_buffers (GstOMXBuffer * buf, GstBuffer * input_buffer)
+{
+  GstMemory *mem;
+  GstOMXRcarMemory *rcar_mem;
+  mem = gst_buffer_peek_memory (input_buffer, 0);
+  rcar_mem =
+      gst_mini_object_get_qdata (GST_MINI_OBJECT (mem),
+      GST_OMX_RCAR_MEMORY_QUARK);
+
+  if (!rcar_mem) {
+    if (!gst_omx_rcar_import_dmabuf (buf, input_buffer)) {
+      GST_ERROR ("R-Car dmabuf import failed");
+      return FALSE;
+    }
+    rcar_mem =
+        gst_mini_object_get_qdata (GST_MINI_OBJECT (mem),
+        GST_OMX_RCAR_MEMORY_QUARK);
+  }
+  return rcar_mem->omx_buf == buf;
+}
