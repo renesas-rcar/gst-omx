@@ -260,6 +260,14 @@ elif omx_target == 'rcar'
       args : gst_omx_args)
     cdata.set ('HAVE_VIDEOENC_EXT', 1)
   endif
+
+  # check OMXR_Extension_video.h
+  if cc.has_header (
+      'OMXR_Extension_video.h',
+      args : gst_omx_args)
+    cdata.set ('HAVE_VIDEOR_EXT', 1)
+  endif
+
 else
   error ('Unsupported omx target specified. Use the -Dtarget option')
 endif

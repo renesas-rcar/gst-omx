@@ -63,6 +63,13 @@ struct _GstOMXVideoEnc
   gboolean disabled;
   /* TRUE to share buffers (userptr) to upstream */
   gboolean no_copy;
+  /* TRUE to receive dmabuf fd from upstream */
+  gboolean import_dmabuf;
+
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+  /* Array contain extension address */
+  GArray *extaddr_array;
+#endif
 
   GstClockTime last_upstream_ts;
 

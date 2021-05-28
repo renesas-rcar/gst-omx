@@ -32,6 +32,15 @@
 #include "gstomxvideo.h"
 #include "gstomxvideoenc.h"
 
+#if defined (HAVE_MMNGRBUF) && defined (HAVE_VIDEOR_EXT)
+#define USE_RCAR_DMABUF_IMPORT
+#endif
+
+#ifdef USE_RCAR_DMABUF_IMPORT
+#include "OMXR_Extension_video.h"
+#include "gstomxrcarmemory.h"
+#endif
+
 #ifdef USE_OMX_TARGET_RPI
 #include <OMX_Broadcom.h>
 #include <OMX_Index.h>
@@ -42,6 +51,10 @@
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
+
+#ifdef USE_RCAR_DMABUF_IMPORT
+static gboolean gst_omx_video_enc_set_use_buffer (GstOMXVideoEnc * self);
+#endif
 
 #define GST_TYPE_OMX_VIDEO_ENC_CONTROL_RATE (gst_omx_video_enc_control_rate_get_type ())
 static GType
@@ -311,7 +324,8 @@ enum
   PROP_LONGTERM_FREQUENCY,
   PROP_LOOK_AHEAD,
   PROP_SCAN_TYPE,
-  PROP_NO_COPY
+  PROP_NO_COPY,
+  PROP_USE_DMABUF
 };
 
 /* FIXME: Better defaults */
@@ -415,6 +429,12 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
   g_object_class_install_property (gobject_class, PROP_NO_COPY,
       g_param_spec_boolean ("no-copy", "Propose buffer to upstream",
           "Whether or not to share input buffer (userptr) with upstream element",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+
+  g_object_class_install_property (gobject_class, PROP_USE_DMABUF,
+      g_param_spec_boolean ("use-dmabuf", "Use dmabuf method",
+          "Whether or not to use dmabuf method",
           FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
@@ -605,6 +625,12 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->quant_b_frames = GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
   self->scan_type = GST_OMX_VIDEO_ENC_SCAN_TYPE_DEFAULT;
   self->no_copy = FALSE;
+  self->import_dmabuf = FALSE;
+#ifdef USE_RCAR_DMABUF_IMPORT
+  self->extaddr_array =
+      g_array_new (FALSE, FALSE, sizeof (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE));
+#endif
+
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   self->qp_mode = GST_OMX_VIDEO_ENC_QP_MODE_DEFAULT;
   self->min_qp = GST_OMX_VIDEO_ENC_MIN_QP_DEFAULT;
@@ -1185,6 +1211,10 @@ gst_omx_video_enc_close (GstVideoEncoder * encoder)
 
   self->started = FALSE;
 
+#ifdef USE_RCAR_DMABUF_IMPORT
+  g_array_set_size (self->extaddr_array, 0);
+#endif
+
   return TRUE;
 }
 
@@ -1195,6 +1225,10 @@ gst_omx_video_enc_finalize (GObject * object)
 
   g_mutex_clear (&self->drain_lock);
   g_cond_clear (&self->drain_cond);
+
+#ifdef USE_RCAR_DMABUF_IMPORT
+  g_array_free (self->extaddr_array, TRUE);
+#endif
 
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
   g_clear_pointer (&self->alg_roi_quality_enum_class, g_type_class_unref);
@@ -1248,6 +1282,11 @@ gst_omx_video_enc_set_property (GObject * object, guint prop_id,
     case PROP_NO_COPY:
       self->no_copy = g_value_get_boolean (value);
       break;
+#ifdef USE_RCAR_DMABUF_IMPORT
+    case PROP_USE_DMABUF:
+      self->import_dmabuf = g_value_get_boolean (value);
+      break;
+#endif
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     case PROP_QP_MODE:
       self->qp_mode = g_value_get_enum (value);
@@ -1343,6 +1382,11 @@ gst_omx_video_enc_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_NO_COPY:
       g_value_set_boolean (value, self->no_copy);
       break;
+#ifdef USE_RCAR_DMABUF_IMPORT
+    case PROP_USE_DMABUF:
+      g_value_set_boolean (value, self->import_dmabuf);
+      break;
+#endif
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     case PROP_QP_MODE:
       g_value_set_enum (value, self->qp_mode);
@@ -2329,9 +2373,18 @@ gst_omx_video_enc_set_to_idle (GstOMXVideoEnc * self)
   if (gst_omx_component_set_state (self->enc, OMX_StateIdle) != OMX_ErrorNone)
     return FALSE;
 
+#ifdef USE_RCAR_DMABUF_IMPORT
+  if (self->input_dmabuf) {
+    if (!gst_omx_video_enc_set_use_buffer (self))
+      return FALSE;
+  } else if (!gst_omx_video_enc_allocate_in_buffers (self)) {
+    return FALSE;
+  }
+#else
   /* Need to allocate buffers to reach Idle state */
   if (!gst_omx_video_enc_allocate_in_buffers (self))
     return FALSE;
+#endif
 
   if (no_disable_outport) {
     if (!gst_omx_video_enc_allocate_out_buffers (self))
@@ -2368,6 +2421,92 @@ buffer_is_from_input_pool (GstOMXVideoEnc * self, GstBuffer * buffer)
   return buf->port == self->enc_in_port;
 }
 
+#ifdef USE_RCAR_DMABUF_IMPORT
+static gboolean
+update_input_port_color_format (GstOMXVideoEnc * self)
+{
+  OMX_PARAM_PORTDEFINITIONTYPE port_def;
+
+  gst_omx_port_get_port_definition (self->enc_in_port, &port_def);
+
+  switch (port_def.format.video.eColorFormat) {
+    case OMX_COLOR_FormatYUV420Planar:
+      port_def.format.video.eColorFormat =
+          OMX_COLOR_FormatYUV420PlanarMultiPlane;
+      break;
+    case OMX_COLOR_FormatYUV420SemiPlanar:
+      port_def.format.video.eColorFormat =
+          OMX_COLOR_FormatYUV420SemiPlanarMultiPlane;
+      break;
+    default:
+      GST_ERROR_OBJECT (self, "Unsupported dmabuf mode for this format");
+      return FALSE;
+  }
+
+  if (gst_omx_port_update_port_definition (self->enc_in_port,
+          &port_def) != OMX_ErrorNone)
+    return FALSE;
+
+  return TRUE;
+}
+
+static gboolean
+update_input_port_buffer_count (GstOMXVideoEnc * self, GstBuffer * input)
+{
+  GstStructure *config;
+  guint min, max;
+
+  config = gst_buffer_pool_get_config (input->pool);
+  if (!gst_buffer_pool_config_get_params (config, NULL, NULL, &min, &max)) {
+    gst_structure_free (config);
+    return FALSE;
+  }
+
+  if (min != max)
+    GST_WARNING_OBJECT (self,
+        "We can't handle dynamic changing of number of buffers");
+
+  if (!gst_omx_port_update_buffer_count_actual (self->enc_in_port, min))
+    return FALSE;
+
+  return TRUE;
+}
+
+static gboolean
+gst_omx_video_enc_set_use_buffer (GstOMXVideoEnc * self)
+{
+  OMX_PARAM_PORTDEFINITIONTYPE port_def;
+  OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE ext_addr;
+  const GList *addr = NULL;
+  gint i;
+
+  memset (&ext_addr, 0, sizeof (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE));
+  ext_addr.nSize = sizeof (OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE);
+  gst_omx_port_get_port_definition (self->enc_in_port, &port_def);
+
+  /* doing copy internally */
+  for (i = 0; i < port_def.nBufferCountActual; i++)
+    g_array_append_val (self->extaddr_array, ext_addr);
+
+  for (i = 0; i < port_def.nBufferCountActual; i++)
+    addr =
+        g_list_append ((GList *) addr,
+        (gpointer) & g_array_index (self->extaddr_array,
+            OMXR_MC_VIDEO_EXTEND_ADDRESSTYPE, i));
+
+  if (gst_omx_port_use_buffers (self->enc_in_port, addr) != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self,
+        ("Fail to allocate OMXBuffer by using OMX_UseBuffer"));
+    g_list_free ((GList *) addr);
+    return FALSE;
+  }
+  g_list_free ((GList *) addr);
+
+  return TRUE;
+}
+
+#endif
+
 static gboolean
 gst_omx_video_enc_enable (GstOMXVideoEnc * self, GstBuffer * input)
 {
@@ -2390,8 +2529,8 @@ gst_omx_video_enc_enable (GstOMXVideoEnc * self, GstBuffer * input)
         input);
     self->input_dmabuf = FALSE;
 
-#ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     if (gst_is_dmabuf_memory (gst_buffer_peek_memory (input, 0))) {
+#ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
       if (self->input_allocation ==
           GST_OMX_BUFFER_ALLOCATION_USE_BUFFER_DYNAMIC) {
         GST_DEBUG_OBJECT (self, "Configure encoder input to import dmabuf");
@@ -2403,8 +2542,15 @@ gst_omx_video_enc_enable (GstOMXVideoEnc * self, GstBuffer * input)
       }
 
       self->input_dmabuf = TRUE;
-    }
+#elif defined(USE_RCAR_DMABUF_IMPORT)
+      if (self->import_dmabuf) {
+        if (update_input_port_buffer_count (self, input) &&
+            update_input_port_color_format (self)) {
+          self->input_dmabuf = TRUE;
+        }
+      }
 #endif
+    }
   }
 
   GST_DEBUG_OBJECT (self, "Enabling component");
@@ -3321,6 +3467,22 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
     }
 #ifdef USE_OMX_TARGET_ZYNQ_USCALE_PLUS
     handle_roi_metadata (self, frame->input_buffer);
+#endif
+
+#ifdef USE_RCAR_DMABUF_IMPORT
+    if (self->input_dmabuf) {
+      GstMemory *mem;
+      GstOMXRcarMemory *rcar_mem;
+
+      if (!gst_omx_rcar_compare_buffers (buf, frame->input_buffer)) {
+        g_queue_push_tail (&port->pending_buffers, buf);
+        acq_ret = GST_OMX_ACQUIRE_BUFFER_ERROR;
+        continue;
+      }
+
+      buf->omx_buf->nFilledLen = port->port_def.nBufferSize;
+      fill_buffer = FALSE;
+    }
 #endif
 
     /* Copy the buffer content in chunks of size as requested
