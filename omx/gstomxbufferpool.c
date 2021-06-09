@@ -3,7 +3,7 @@
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
  * Copyright (C) 2013, Collabora Ltd.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (C) 2019-2020, Renesas Electronics Corporation
+ * Copyright (C) 2019-2021, Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -320,18 +320,20 @@ gst_omx_buffer_pool_stop (GstBufferPool * bpool)
   pool->port->using_pool = TRUE;
 
 #ifdef USE_RCAR_DMABUF
-  gint dmabuf_id;
+  {
+    gint dmabuf_id;
 
-  for (i = 0; i < pool->id_array->len; i++) {
-    dmabuf_id = g_array_index (pool->id_array, gint, i);
-    if (dmabuf_id >= 0) {
-      GST_DEBUG_OBJECT (pool, "mmngr_export_end_in_user (%d)", dmabuf_id);
-      mmngr_export_end_in_user_ext (dmabuf_id);
-    } else {
-      GST_WARNING_OBJECT (pool, "Invalid dmabuf_id");
+    for (i = 0; i < pool->id_array->len; i++) {
+      dmabuf_id = g_array_index (pool->id_array, gint, i);
+      if (dmabuf_id >= 0) {
+        GST_DEBUG_OBJECT (pool, "mmngr_export_end_in_user (%d)", dmabuf_id);
+        mmngr_export_end_in_user_ext (dmabuf_id);
+      } else {
+        GST_WARNING_OBJECT (pool, "Invalid dmabuf_id");
+      }
     }
+    g_array_free (pool->id_array, TRUE);
   }
-  g_array_free (pool->id_array, TRUE);
 #endif
 
   return GST_BUFFER_POOL_CLASS (gst_omx_buffer_pool_parent_class)->stop (bpool);
