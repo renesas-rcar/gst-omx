@@ -1748,8 +1748,10 @@ update_buffer_meta (GstOMXVideoDec * self, GstBuffer * buffer,
   gint i;
 
   if ((GST_VIDEO_INFO_WIDTH (vinfo) == vmeta->width) &&
-      (GST_VIDEO_INFO_HEIGHT (vinfo) == vmeta->height))
+      (GST_VIDEO_INFO_HEIGHT (vinfo) == vmeta->height)) {
+    gst_video_codec_state_unref (state);
     return;
+  }
 
   GST_DEBUG_OBJECT (self, "update buffer meta");
   if (self->enable_crop) {
@@ -3779,6 +3781,7 @@ gst_omx_video_dec_handle_dynamic_change_default (GstOMXVideoDec * self,
       GstBufferPool *pool =
           gst_video_decoder_get_buffer_pool (GST_VIDEO_DECODER (self));
       gst_buffer_pool_set_active (pool, FALSE);
+      gst_object_unref (pool);
     }
     GST_DEBUG_OBJECT (self, "New caps: %" GST_PTR_FORMAT,
         gst_pad_get_current_caps (GST_VIDEO_DECODER_SRC_PAD (self)));
