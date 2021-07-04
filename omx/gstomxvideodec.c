@@ -57,6 +57,9 @@
 #include "OMXR_Extension_vdcmn.h"
 #endif
 #include "gstomxwmvdec.h"
+#ifdef USE_OMX_TARGET_RCAR
+#include <unistd.h>
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_dec_debug_category
@@ -1881,6 +1884,36 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
     }
 
     if (acq_return == GST_OMX_ACQUIRE_BUFFER_RECONFIGURE) {
+#ifdef USE_OMX_TARGET_RCAR
+      if (!gst_omx_port_is_enabled (port)) {
+        guint plane_size;
+        gint page_size = getpagesize ();
+        OMX_PARAM_PORTDEFINITIONTYPE port_def;
+        gst_omx_port_get_port_definition (port, &port_def);
+        GST_DEBUG_OBJECT (self, "nStridexnSliceHeight = %dx%d",
+            port_def.format.video.nStride, port_def.format.video.nSliceHeight);
+        plane_size =
+            port_def.format.video.nStride * port_def.format.video.nSliceHeight;
+        if (plane_size % page_size) {
+          if (port_def.format.video.nStride % 64)
+            port_def.format.video.nStride =
+                GST_ROUND_UP_64 (port_def.format.video.nStride);
+          if (port_def.format.video.nSliceHeight % 64)
+            port_def.format.video.nSliceHeight =
+                GST_ROUND_UP_64 (port_def.format.video.nSliceHeight);
+
+          err =
+              gst_omx_port_update_port_definition (self->dec_out_port,
+              &port_def);
+          if (err != OMX_ErrorNone)
+            goto reconfigure_error;
+          GST_DEBUG_OBJECT (self,
+              "After reconfigure nStridexnSliceHeight = %dx%d",
+              port->port_def.format.video.nStride,
+              port->port_def.format.video.nSliceHeight);
+        }
+      }
+#endif
       /* We have the possibility to reconfigure everything now */
       err = gst_omx_video_dec_reconfigure_output_port (self);
       if (err != OMX_ErrorNone)
