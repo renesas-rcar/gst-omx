@@ -3135,6 +3135,11 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
       out_port_def.format.video.nStride = 128;
       out_port_def.format.video.nSliceHeight = 128;
     }
+    /* Workaround for small video. Currently, it runs on copy mode only */
+    if (info->width <= out_port_def.format.video.nStride)
+      out_port_def.format.video.nFrameWidth = info->width;
+    if (info->height <= out_port_def.format.video.nSliceHeight)
+      out_port_def.format.video.nFrameHeight = info->height;
 
     if (gst_omx_port_update_port_definition (self->dec_out_port,
             &out_port_def) != OMX_ErrorNone)
