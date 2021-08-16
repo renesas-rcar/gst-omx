@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
  *   Author: Sebastian Dröge <sebastian.droege@collabora.co.uk>, Collabora Ltd.
+ * Copyright (C) 2021 Renesas Electronics Corporation
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -26,6 +27,9 @@
 
 #include "gstomxh264dec.h"
 #include "gstomxh264utils.h"
+#ifdef HAVE_H264DEC_EXT
+#include "OMXR_Extension_h264d.h"
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_h264_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_h264_dec_debug_category
@@ -36,9 +40,17 @@ static gboolean gst_omx_h264_dec_is_format_change (GstOMXVideoDec * dec,
 static gboolean gst_omx_h264_dec_set_format (GstOMXVideoDec * dec,
     GstOMXPort * port, GstVideoCodecState * state);
 
+static void
+gst_omx_h264_dec_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec);
+static void
+gst_omx_h264_dec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec);
+
 enum
 {
-  PROP_0
+  PROP_0,
+  PROP_USE_SECOND_HWIP
 };
 
 /* class initialization */
@@ -55,6 +67,15 @@ gst_omx_h264_dec_class_init (GstOMXH264DecClass * klass)
 {
   GstOMXVideoDecClass *videodec_class = GST_OMX_VIDEO_DEC_CLASS (klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
+
+  GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+  gobject_class->set_property = gst_omx_h264_dec_set_property;
+  gobject_class->get_property = gst_omx_h264_dec_get_property;
+
+  g_object_class_install_property (gobject_class, PROP_USE_SECOND_HWIP,
+      g_param_spec_boolean ("use-2ndhwip", "Use the second HWIP to decode",
+          "Whether or not use another Video Hardware IP to decode",
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   videodec_class->is_format_change =
       GST_DEBUG_FUNCPTR (gst_omx_h264_dec_is_format_change);
@@ -176,6 +197,7 @@ gst_omx_h264_dec_set_format (GstOMXVideoDec * dec, GstOMXPort * port,
   GstOMXVideoDecClass *klass = GST_OMX_VIDEO_DEC_GET_CLASS (dec);
   OMX_PARAM_PORTDEFINITIONTYPE port_def;
   OMX_ERRORTYPE err;
+  GstOMXH264Dec *self = GST_OMX_H264_DEC (dec);
 
   gst_omx_port_get_port_definition (port, &port_def);
   port_def.format.video.eCompressionFormat = OMX_VIDEO_CodingAVC;
@@ -188,5 +210,63 @@ gst_omx_h264_dec_set_format (GstOMXVideoDec * dec, GstOMXPort * port,
       return FALSE;
   }
 
+  if (self->use_2ndhwip) {
+#ifdef HAVE_SECOND_HWIP
+    OMX_STATETYPE omx_state =
+        gst_omx_component_get_state (dec->dec, GST_CLOCK_TIME_NONE);
+    OMXR_MC_VIDEO_PARAM_AVC_USE_IVDP1CTYPE hwip_mode;
+    GST_OMX_INIT_STRUCT (&hwip_mode);
+
+    /* Only set this index in OMX_StateLoaded and OMX_StateWaitForResources */
+    if ((omx_state != OMX_StateLoaded)
+        && (omx_state != OMX_StateWaitForResources)) {
+      GST_ERROR_OBJECT (self, "Incorrect OMX state. Expect state: StateLoaded or StateWaitForResources \
+           \nCurrent state: %s\n",
+          gst_omx_state_to_string (omx_state));
+      return FALSE;
+    }
+    /* port used in set_format is dec_in_port */
+    hwip_mode.nPortIndex = port->index;
+    hwip_mode.eModeSelection = OMXR_MC_VIDEO_AVCUseiVDP1C;
+    err =
+        gst_omx_component_set_parameter (dec->dec,
+        OMXR_MC_IndexParamVideoAvcUseiVDP1C, &hwip_mode);
+    if (err != OMX_ErrorNone)
+      return FALSE;
+#else
+    GST_WARNING_OBJECT (self, "OMX didn't support for this feature\n");
+#endif
+  }
+
   return TRUE;
+}
+
+static void
+gst_omx_h264_dec_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec)
+{
+  GstOMXH264Dec *self = GST_OMX_H264_DEC (object);
+  switch (prop_id) {
+    case PROP_USE_SECOND_HWIP:
+      g_value_set_boolean (value, self->use_2ndhwip);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_omx_h264_dec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstOMXH264Dec *self = GST_OMX_H264_DEC (object);
+  switch (prop_id) {
+    case PROP_USE_SECOND_HWIP:
+      self->use_2ndhwip = g_value_get_boolean (value);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
 }
