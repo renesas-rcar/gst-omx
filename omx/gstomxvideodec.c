@@ -1846,16 +1846,25 @@ get_crop_info (GstOMXVideoDec * self, crop_info * c_info)
 
 static void
 update_buffer_meta (GstOMXVideoDec * self, GstBuffer * buffer,
-    const crop_info * cinfo, GstVideoMeta * vmeta)
+    const crop_info * cinfo)
 {
-  GstVideoCodecState *state =
-      gst_video_decoder_get_output_state (GST_VIDEO_DECODER (self));
-  GstVideoInfo *vinfo = &state->info;
+  GstVideoCodecState *state;
+  GstVideoInfo *vinfo;
+  GstVideoMeta *vmeta;
   gint i;
 
-  if ((GST_VIDEO_INFO_WIDTH (vinfo) == vmeta->width) &&
-      (GST_VIDEO_INFO_HEIGHT (vinfo) == vmeta->height))
+  vmeta = gst_buffer_get_video_meta (buffer);
+  if (!vmeta)
     return;
+
+  state = gst_video_decoder_get_output_state (GST_VIDEO_DECODER (self));
+  vinfo = &state->info;
+
+  if ((GST_VIDEO_INFO_WIDTH (vinfo) == vmeta->width) &&
+      (GST_VIDEO_INFO_HEIGHT (vinfo) == vmeta->height)) {
+    gst_video_codec_state_unref (state);
+    return;
+  }
 
   GST_DEBUG_OBJECT (self, "update buffer meta");
 
@@ -1867,8 +1876,9 @@ update_buffer_meta (GstOMXVideoDec * self, GstBuffer * buffer,
         GST_VIDEO_FORMAT_INFO_PSTRIDE (finfo, i));
   }
 
-  vmeta->width -= cinfo->crop_left;
-  vmeta->height -= cinfo->crop_top;
+  vmeta->width = vinfo->width;
+  vmeta->height = vinfo->height;
+  gst_video_codec_state_unref (state);
 }
 
 static gboolean
@@ -2132,18 +2142,13 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       set_outbuffer_interlace_flags (buf, outbuf);
 #endif
 
+      update_buffer_meta (self, outbuf, &cinfo);
+
       if (GST_OMX_BUFFER_POOL (self->out_port_pool)->need_copy)
         outbuf =
             copy_frame (&GST_OMX_BUFFER_POOL (self->out_port_pool)->video_info,
             outbuf);
 
-      if (self->enable_crop && (cinfo.crop_top || cinfo.crop_left)) {
-        GstVideoMeta *vmeta;
-
-        vmeta = gst_buffer_get_video_meta (outbuf);
-        if (vmeta)
-          update_buffer_meta (self, outbuf, &cinfo, vmeta);
-      }
 
       buf = NULL;
     } else {
@@ -2190,18 +2195,12 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       set_outbuffer_interlace_flags (buf, outbuf);
 #endif
 
+      update_buffer_meta (self, outbuf, &cinfo);
+
       if (GST_OMX_BUFFER_POOL (self->out_port_pool)->need_copy)
         outbuf =
             copy_frame (&GST_OMX_BUFFER_POOL (self->out_port_pool)->video_info,
             outbuf);
-
-      if (self->enable_crop && (cinfo.crop_top || cinfo.crop_left)) {
-        GstVideoMeta *vmeta;
-
-        vmeta = gst_buffer_get_video_meta (outbuf);
-        if (vmeta)
-          update_buffer_meta (self, outbuf, &cinfo, vmeta);
-      }
 
       frame->output_buffer = outbuf;
       flow_ret =
