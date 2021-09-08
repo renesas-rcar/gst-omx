@@ -121,6 +121,9 @@ struct _GstOMXVideoDec
   gboolean has_set_property;
   /* Set TRUE to crop as info of conf_win_left_offset and conf_win_top_offset */
   gboolean enable_crop;
+
+  gboolean crop_set;
+  crop_info cinfo;
 };
 
 struct _GstOMXVideoDecClass
