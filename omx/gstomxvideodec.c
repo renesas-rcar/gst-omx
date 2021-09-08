@@ -92,6 +92,10 @@ static gboolean gst_omx_video_dec_deallocate_output_buffers (GstOMXVideoDec
 
 static gboolean get_crop_info (GstOMXVideoDec * self, crop_info * c_info);
 
+static gboolean
+gst_omx_video_dec_async_resolution_change (GstOMXVideoDec * self,
+    GstOMXBuffer * buf);
+
 enum
 {
   PROP_0,
@@ -1308,6 +1312,7 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
       self->out_port_pool = NULL;
     } else if (!self->use_buffers) {
       gst_buffer_pool_set_active (pool, FALSE);
+      GST_OMX_BUFFER_POOL (self->out_port_pool)->deactivated = FALSE;
     }
   } else if (self->out_port_pool) {
     gst_object_unref (self->out_port_pool);
@@ -2105,6 +2110,13 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       if (!update_output_state (self, &cinfo))
         goto caps_failed;
     }
+  }
+
+  /* Poll for resolution changes that happen without a PortSettingsChanged
+     event */
+  if (!gst_omx_video_dec_async_resolution_change (self, buf)) {
+    gst_omx_port_release_buffer (port, buf);
+    goto caps_failed;
   }
 
   if (!frame && (buf->omx_buf->nFilledLen > 0 || buf->eglimage)) {
@@ -3865,4 +3877,82 @@ gst_omx_video_dec_propose_allocation (GstVideoDecoder * bdec, GstQuery * query)
   return
       GST_VIDEO_DECODER_CLASS
       (gst_omx_video_dec_parent_class)->propose_allocation (bdec, query);
+}
+
+
+static gboolean
+gst_omx_video_dec_async_resolution_change (GstOMXVideoDec * self,
+    GstOMXBuffer * buf)
+{
+  GstVideoCodecState *state;
+  GstVideoCodecState *new_state;
+  gint decoded_width, decoded_height;
+  gboolean ret = TRUE;
+
+#ifdef HAVE_VIDEODEC_EXT
+  OMXR_MC_VIDEO_DECODERESULTTYPE *decode_res;
+
+  /* Update the decoder output state only when the DECODERESULTTYPE data is
+   * different from the current setting.  Settings from the
+   * OMX_VIDEO_PORTDEFINITIONTYPE can change while buffers of the previous size
+   * are still being dequeued, so those values might not match the current
+   * buffer. */
+
+  decode_res =
+      (OMXR_MC_VIDEO_DECODERESULTTYPE *) buf->omx_buf->pOutputPortPrivate;
+
+  if (!decode_res)
+    return ret;
+
+  decoded_width = decode_res->u32PictWidth;
+  decoded_height = decode_res->u32PictHeight;
+#else
+  return TRUE;
+#endif
+
+  GST_VIDEO_DECODER_STREAM_LOCK (self);
+
+  state = gst_video_decoder_get_output_state (GST_VIDEO_DECODER (self));
+
+  /* If state hasn't yet been set the default reconfigure path should be used */
+  if (!state)
+    goto out;
+
+  if (decoded_height == state->info.height
+      && decoded_width == state->info.width) {
+    gst_video_codec_state_unref (state);
+    goto out;
+  }
+
+  /* Update existing state to the newly detected size */
+  new_state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
+      state->info.finfo->format, decoded_width, decoded_height, state);
+
+  gst_video_codec_state_unref (state);
+  gst_video_codec_state_unref (new_state);
+
+  GST_LOG_OBJECT (self, "Old caps: %" GST_PTR_FORMAT,
+      gst_pad_get_current_caps (GST_VIDEO_DECODER_SRC_PAD (self)));
+
+  if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
+    GST_ERROR_OBJECT (self, "Cannot re-negotiate with new output state");
+    ret = FALSE;
+    goto out;
+  }
+
+  GST_DEBUG_OBJECT (self, "New caps: %" GST_PTR_FORMAT,
+      gst_pad_get_current_caps (GST_VIDEO_DECODER_SRC_PAD (self)));
+
+  /* The unused downstream pool may have become active during renegotiation,
+     so disable it again */
+
+  if (self->out_port_pool && !self->use_buffers) {
+    GstBufferPool *pool =
+        gst_video_decoder_get_buffer_pool (GST_VIDEO_DECODER (self));
+    gst_buffer_pool_set_active (pool, FALSE);
+  }
+
+out:
+  GST_VIDEO_DECODER_STREAM_UNLOCK (self);
+  return ret;
 }
