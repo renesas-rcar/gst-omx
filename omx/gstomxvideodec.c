@@ -1884,44 +1884,6 @@ update_buffer_meta (GstOMXVideoDec * self, GstBuffer * buffer)
   gst_video_codec_state_unref (state);
 }
 
-static gboolean
-update_output_state (GstOMXVideoDec * self, const crop_info * cinfo)
-{
-  GstVideoCodecState *state;
-  gint state_width, state_height;
-  GstOMXPort *port;
-  OMX_PARAM_PORTDEFINITIONTYPE port_def;
-  guint cropped_width, cropped_height;
-
-  state = gst_video_decoder_get_output_state (GST_VIDEO_DECODER (self));
-  state_width = GST_VIDEO_INFO_WIDTH (&state->info);
-  state_height = GST_VIDEO_INFO_HEIGHT (&state->info);
-
-  port = self->dec_out_port;
-  gst_omx_port_get_port_definition (port, &port_def);
-
-  cropped_width = port_def.format.video.nFrameWidth - cinfo->crop_left;
-  cropped_height = port_def.format.video.nFrameHeight - cinfo->crop_top;
-
-  if (state_width != cropped_width || state_height != cropped_height) {
-    gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
-        gst_omx_video_get_format_from_omx (port_def.format.video.eColorFormat),
-        cropped_width, cropped_height, state);
-    if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
-      GST_ERROR_OBJECT (self, "Negotiation failed");
-      return FALSE;
-    }
-
-    if (self->out_port_pool) {
-      GstBufferPool *pool =
-          gst_video_decoder_get_buffer_pool (GST_VIDEO_DECODER (self));
-      gst_buffer_pool_set_active (pool, FALSE);
-    }
-  }
-
-  return TRUE;
-}
-
 static void
 gst_omx_video_dec_pause_loop (GstOMXVideoDec * self, GstFlowReturn flow_ret)
 {
@@ -2105,10 +2067,6 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
     if (!get_crop_info (self, &self->cinfo))
       goto component_error;
 
-    if (self->cinfo.crop_left || self->cinfo.crop_top) {
-      if (!update_output_state (self, &self->cinfo))
-        goto caps_failed;
-    }
     self->crop_set = TRUE;
   }
 
@@ -3887,6 +3845,7 @@ gst_omx_video_dec_async_resolution_change (GstOMXVideoDec * self,
   GstVideoCodecState *state;
   GstVideoCodecState *new_state;
   gint decoded_width, decoded_height;
+  crop_info *cinfo = &self->cinfo;
   gboolean ret = TRUE;
 
 #ifdef HAVE_VIDEODEC_EXT
@@ -3904,8 +3863,8 @@ gst_omx_video_dec_async_resolution_change (GstOMXVideoDec * self,
   if (!decode_res)
     return ret;
 
-  decoded_width = decode_res->u32PictWidth;
-  decoded_height = decode_res->u32PictHeight;
+  decoded_width = decode_res->u32PictWidth - cinfo->crop_left;
+  decoded_height = decode_res->u32PictHeight - cinfo->crop_top;
 #else
   return TRUE;
 #endif
