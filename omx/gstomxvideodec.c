@@ -1103,6 +1103,10 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
     GList *buffers = NULL;
     GList *l = NULL;
 
+#ifdef USE_OMX_TARGET_RCAR
+    /* Only support as OMX allocation */
+    min = max = port->port_def.nBufferCountActual;
+#endif
     if (min != port->port_def.nBufferCountActual) {
       err = gst_omx_port_update_port_definition (port, NULL);
       if (err == OMX_ErrorNone) {
@@ -3679,6 +3683,16 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
       GST_DEBUG_OBJECT (self,
           "Try using downstream buffers with OMX_UseBuffer");
       self->use_buffers = TRUE;
+#endif
+
+#ifdef USE_OMX_TARGET_RCAR
+      /* Only support as OMX allocation */
+      if (!self->no_copy && !self->use_dmabuf) {
+        gst_query_set_nth_allocation_pool (query, i, pool,
+            self->dec_out_port->port_def.nBufferSize,
+            self->dec_out_port->port_def.nBufferCountActual,
+            self->dec_out_port->port_def.nBufferCountActual);
+      }
 #endif
       i++;
     }
