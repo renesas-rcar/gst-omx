@@ -3852,10 +3852,17 @@ gst_omx_video_dec_handle_dynamic_change_default (GstOMXVideoDec * self,
   /* Fixme: Now, not care for framerate and pixel-aspect-ratio */
   state = gst_video_decoder_get_output_state (GST_VIDEO_DECODER (self));
 
-  if ((!state) || ((format != GST_VIDEO_FORMAT_UNKNOWN)
-          && (format != state->info.finfo->format))) {
-    self->dynamic_change = TRUE;
-    have_change = TRUE;
+  if (!state) {
+    if (format != GST_VIDEO_FORMAT_UNKNOWN) {
+      self->dynamic_change = TRUE;
+      have_change = TRUE;
+    }
+  } else {
+    if ((format != GST_VIDEO_FORMAT_UNKNOWN)
+          && (format != state->info.finfo->format)) {
+      self->dynamic_change = TRUE;
+      have_change = TRUE;
+    }
   }
 
   if (self->dynamic_width == 0)
