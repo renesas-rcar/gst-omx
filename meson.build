@@ -279,8 +279,8 @@ elif omx_target == 'rcar'
       'OMXR_Extension_h264d.h',
       args : gst_omx_args)
     cdata.set ('HAVE_H264DEC_EXT', 1)
-    if cc.has_member('OMXR_MC_VIDEO_PARAM_AVC_USE_IVDP1CTYPE',
-        'eModeSelection', prefix : '#include "OMXR_Extension_h264d.h"')
+    if cc.has_member('OMXR_MC_VIDEO_PARAM_AVC_SELECT_HWIP',
+        'eIPCoreSelection', prefix : '#include "OMXR_Extension_h264d.h"')
       cdata.set ('HAVE_SECOND_HWIP', 1)
     endif
   endif

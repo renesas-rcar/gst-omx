@@ -214,7 +214,7 @@ gst_omx_h264_dec_set_format (GstOMXVideoDec * dec, GstOMXPort * port,
 #ifdef HAVE_SECOND_HWIP
     OMX_STATETYPE omx_state =
         gst_omx_component_get_state (dec->dec, GST_CLOCK_TIME_NONE);
-    OMXR_MC_VIDEO_PARAM_AVC_USE_IVDP1CTYPE hwip_mode;
+    OMXR_MC_VIDEO_PARAM_AVC_SELECT_HWIP hwip_mode;
     GST_OMX_INIT_STRUCT (&hwip_mode);
 
     /* Only set this index in OMX_StateLoaded and OMX_StateWaitForResources */
@@ -227,10 +227,10 @@ gst_omx_h264_dec_set_format (GstOMXVideoDec * dec, GstOMXPort * port,
     }
     /* port used in set_format is dec_in_port */
     hwip_mode.nPortIndex = port->index;
-    hwip_mode.eModeSelection = OMXR_MC_VIDEO_AVCUseiVDP1C;
+    hwip_mode.eIPCoreSelection = OMXR_MC_VIDEO_AVCUseIPCore1;
     err =
         gst_omx_component_set_parameter (dec->dec,
-        OMXR_MC_IndexParamVideoAvcUseiVDP1C, &hwip_mode);
+        OMXR_MC_IndexParamVideoAvcSelectHWIP, &hwip_mode);
     if (err != OMX_ErrorNone)
       return FALSE;
 #else
