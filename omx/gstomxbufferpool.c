@@ -838,7 +838,7 @@ gst_omx_buffer_pool_finalize (GObject * object)
 {
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (object);
 
-#ifdef HAVE_MMNGRBUF
+#ifdef USE_RCAR_DMABUF
   g_array_free (pool->physadd_array, TRUE);
 #endif
 
@@ -892,7 +892,7 @@ static void
 gst_omx_buffer_pool_init (GstOMXBufferPool * pool)
 {
   pool->buffers = g_ptr_array_new ();
-#ifdef HAVE_MMNGRBUF
+#ifdef USE_RCAR_DMABUF
   pool->physadd_array = g_array_new (FALSE, FALSE, sizeof (guint));
 #endif
 }
