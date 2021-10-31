@@ -1842,9 +1842,10 @@ gst_omx_video_dec_pause_loop (GstOMXVideoDec * self, GstFlowReturn flow_ret)
 static gboolean
 gst_omx_video_dec_activate_internal_pool (GstOMXVideoDec * self)
 {
-  GstCaps *caps;
+  GstCaps *caps = NULL;
   GstBufferPool *pool;
   GstStructure *config;
+  gboolean ret = TRUE;
   /* Create pool for small sizes (VP9: smaller than 192x192, others: smaller
      than 128x128) stream which didn't reconfigure */
   self->out_port_pool =
@@ -1853,8 +1854,11 @@ gst_omx_video_dec_activate_internal_pool (GstOMXVideoDec * self)
       self->dmabuf ? GST_OMX_BUFFER_MODE_DMABUF :
       GST_OMX_BUFFER_MODE_SYSTEM_MEMORY);
   pool = gst_video_decoder_get_buffer_pool (GST_VIDEO_DECODER (self));
-  config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_get_params (config, &caps, NULL, NULL, NULL);
+  if (pool) {
+    config = gst_buffer_pool_get_config (pool);
+    gst_buffer_pool_config_get_params (config, &caps, NULL, NULL, NULL);
+    gst_structure_free (config);
+  }
   if (caps) {
     config = gst_buffer_pool_get_config (self->out_port_pool);
 
@@ -1870,17 +1874,25 @@ gst_omx_video_dec_activate_internal_pool (GstOMXVideoDec * self)
       GST_ERROR_OBJECT (self, "Failed to set config on internal pool");
       gst_object_unref (self->out_port_pool);
       self->out_port_pool = NULL;
-      return FALSE;
+      ret = FALSE;
+      goto done;
     }
     /* This now allocates all the buffers */
     if (!gst_buffer_pool_set_active (self->out_port_pool, TRUE)) {
       GST_ERROR_OBJECT (self, "Failed to activate internal pool");
       gst_object_unref (self->out_port_pool);
       self->out_port_pool = NULL;
-      return FALSE;
+      ret = FALSE;
+      goto done;
     }
   }
-  return TRUE;
+
+done:
+
+  if (pool)
+    gst_object_unref (pool);
+
+  return ret;
 }
 
 static void
