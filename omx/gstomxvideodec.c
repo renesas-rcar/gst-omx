@@ -1961,13 +1961,15 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         plane_size =
             port_def.format.video.nStride * port_def.format.video.nSliceHeight;
         if (plane_size % page_size) {
+/*Workaround to fix padding omx*/
+#ifdef UNSUPPORT_FIX_PADDING_OMX
           if (port_def.format.video.nStride % 64)
             port_def.format.video.nStride =
                 GST_ROUND_UP_64 (port_def.format.video.nStride);
           if (port_def.format.video.nSliceHeight % 64)
             port_def.format.video.nSliceHeight =
                 GST_ROUND_UP_64 (port_def.format.video.nSliceHeight);
-
+#endif
           err =
               gst_omx_port_update_port_definition (self->dec_out_port,
               &port_def);
@@ -3091,8 +3093,15 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
       out_port_def.format.video.nStride = 192;
       out_port_def.format.video.nSliceHeight = 192;
     } else {
+/*Workaround to fix padding omx*/
+#ifdef UNSUPPORT_FIX_PADDING_OMX
       out_port_def.format.video.nStride = 128;
       out_port_def.format.video.nSliceHeight = 128;
+#else
+      out_port_def.format.video.nStride = info->width;
+      out_port_def.format.video.nSliceHeight = info->height;
+#endif
+
     }
     /* Workaround for small video. Currently, it runs on copy mode only */
     if (info->width <= out_port_def.format.video.nStride)
