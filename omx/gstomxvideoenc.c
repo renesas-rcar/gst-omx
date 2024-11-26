@@ -1996,7 +1996,12 @@ gst_omx_video_enc_update_input_port (GstOMXVideoEnc * self,
           port_def.format.video.nStride = GST_ROUND_UP_64 (stride);
           break;
         case OMX_COLOR_FormatYUV420SemiPlanar:
+/*Workaround to fix stride VCP5*/
+#ifdef UNSUPPORT_STRIDE_VCP5
           port_def.format.video.nStride = GST_ROUND_UP_32 (stride);
+#else
+          port_def.format.video.nStride = GST_ROUND_UP_64 (stride);
+#endif
           break;
         default:
           break;
